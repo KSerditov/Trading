@@ -71,11 +71,9 @@ func Start(ctx context.Context, listenAddr string, ACLData string, datasource ti
 
 	go func(s *grpc.Server) {
 		for {
-			select {
-			case <-ctx.Done():
-				s.GracefulStop()
-				return
-			}
+			<-ctx.Done()
+			s.GracefulStop()
+			return
 		}
 	}(server)
 
