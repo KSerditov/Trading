@@ -25,7 +25,8 @@ func main() {
 	}
 	fmt.Println("Historical data load completed")
 
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	err = Start(ctx, `127.0.0.1:8082`, ``, tickers)
 	if err != nil {

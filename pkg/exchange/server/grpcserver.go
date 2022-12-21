@@ -170,31 +170,32 @@ func (e *ExchangeSrv) GetBrokerChannel(brokerId *exchange.BrokerID) (chan *excha
 	}
 }
 
-func (e *ExchangeSrv) Start() error {
+func (e *ExchangeSrv) StartTrader() error {
 	interval := time.Second * 1
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-
-	for {
-		select {
-		case timetick := <-ticker.C:
-			_, err := e.Tickers.GetTickersBeforeTS(timetick, interval)
-			if err != nil {
-				return err
-			}
-			/*for i, order := range e.OrderBook {
-				for j, ticker := range tickers {
-
+	/*
+		for {
+			select {
+			case timetick := <-ticker.C:
+				_, err := e.Tickers.GetTickersBeforeTS(timetick, interval)
+				if err != nil {
+					return err
 				}
-			}*/
+				for i, order := range e.OrderBook {
+					for j, ticker := range tickers {
 
+					}
+				}
+
+			}
 		}
-	}
+	*/
 	/*
 		1. Get new tickers for period
 		2. For each ticker, iterate over order book
 			if fits - perform deal: set deal params; send to broker channel
 			if not - skip order
 	*/
-
+	return nil
 }
