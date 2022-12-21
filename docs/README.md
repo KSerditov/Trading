@@ -1,9 +1,1 @@
-# `/docs`
-
-Design and user documents (in addition to your godoc generated documentation).
-
-Examples:
-
-* https://github.com/gohugoio/hugo/tree/master/docs
-* https://github.com/openshift/origin/tree/master/docs
-* https://github.com/dapr/dapr/tree/master/docs
+[![golangci-lint](https://github.com/KSerditov/Trading/actions/workflows/golang-lint.yml/badge.svg?branch=main)](https://github.com/KSerditov/Trading/actions/workflows/golang-lint.yml)
