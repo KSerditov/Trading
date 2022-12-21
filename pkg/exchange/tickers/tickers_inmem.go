@@ -39,6 +39,8 @@ func (d *TickersSourceInMem) Init() error {
 		return errors.New("empty list of input files for tickers data")
 	}
 
+	fmt.Println("Historical data load completed")
+
 	d.TickersLock.Lock()
 	defer d.TickersLock.Unlock()
 	d.Tickers = make([]Tick, 0, 300000)

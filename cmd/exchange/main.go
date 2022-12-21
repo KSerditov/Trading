@@ -23,7 +23,6 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println("Historical data load completed")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -44,10 +43,14 @@ func Start(ctx context.Context, listenAddr string, ACLData string, datasource ti
 	*/
 
 	s := &server.ExchangeSrv{
-		Tickers:       datasource,
-		MaxDealID:     0,
-		OrderBookLock: &sync.RWMutex{},
-		OrderBook:     make([]*exchange.Deal, 0, 100),
+		BufferSize:                  100,
+		Tickers:                     datasource,
+		MaxDealID:                   0,
+		OrderBookLock:               &sync.RWMutex{},
+		OrderBook:                   make([]*exchange.Deal, 0, 100),
+		ChannelsLock:                &sync.RWMutex{},
+		Channels:                    make(map[int64]chan *exchange.Deal, 10),
+		UnimplementedExchangeServer: exchange.UnimplementedExchangeServer{},
 	}
 
 	lis, err := net.Listen("tcp", listenAddr)
@@ -78,6 +81,9 @@ func Start(ctx context.Context, listenAddr string, ACLData string, datasource ti
 	}(server)
 
 	fmt.Println("Starting exchange server...")
+
+	s.StartTrader()
+
 	errs := server.Serve(lis)
 	if errs != nil {
 		return errs
