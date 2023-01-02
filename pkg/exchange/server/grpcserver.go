@@ -10,6 +10,8 @@ import (
 
 	"github.com/KSerditov/Trading/api/exchange"
 	"github.com/KSerditov/Trading/pkg/exchange/tickers"
+
+	"github.com/google/uuid"
 )
 
 type ExchangeSrv struct {
@@ -113,7 +115,12 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 
 // Adds new Order from broker to OrderBook and returns assigned unique DealID
 func (e *ExchangeSrv) Create(ctx context.Context, deal *exchange.Deal) (*exchange.DealID, error) {
-	deal.ID = atomic.AddInt64(&e.MaxDealID, 1)
+	//deal.ID = atomic.AddInt64(&e.MaxDealID, 1)
+	deal.ID = int64(uuid.New().ID()) // since there is no persistence for exchange implemented
+	/*
+		var i big.Int
+		i.SetString(strings.Replace(uuid, "-", "", 4), 16)
+	*/
 
 	e.OrderBookLock.Lock()
 	e.OrderBook = append(e.OrderBook, deal)

@@ -53,7 +53,7 @@ CREATE TABLE `orders_history` (
 
 DROP TABLE IF EXISTS `request`;
 CREATE TABLE `request` ( -- запросы
-    `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `id` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `user_id` BINARY(16) NOT NULL,
     `ticker` varchar(300) NOT NULL,
     `volume` int NOT NULL,

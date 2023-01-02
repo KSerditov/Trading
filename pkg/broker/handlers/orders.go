@@ -96,6 +96,9 @@ func (o *OrderHandlers) CreateDeal(w http.ResponseWriter, r *http.Request) {
 	}
 	deal.Id = dealid.ID
 
+	fmt.Println("NEW DEAL:")
+	fmt.Println(deal)
+
 	_, errr := o.OrdersRepo.AddDeal(sess.UserID, *deal)
 	if errr != nil {
 		//log error, but request has been posted to exchange, so return OK

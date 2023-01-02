@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -111,25 +112,28 @@ func (o *OrdersRepositoryMySql) GetBalance(userid string) (int32, error) {
 }
 
 func (o *OrdersRepositoryMySql) AddDeal(userid string, deal Deal) (int64, error) {
+	fmt.Println("AddDeal checking user")
 	// check user exists
 	u := user.User{}
-	row := o.DB.QueryRow("SELECT BIN_TO_UUID(id) AS `id`, `username` AS `username` FROM users WHERE id = UUID_TO_BIN(?)", userid)
+	row := o.DB.QueryRow("SELECT BIN_TO_UUID(id) AS `id`, `username` AS `username` FROM users WHERE id = UUID_TO_BIN(?);", userid)
 	err := row.Scan(&u.ID, &u.Username)
 	if err != nil {
 		return -1, err
 	}
 
+	fmt.Println("AddDeal saving deal")
 	// save deal
 	var isBuy int8
 	if strings.ToLower(deal.Type) == "buy" {
 		isBuy = 1
 	}
-	sql := "INSERT INTO request (`id`, `user_id`, `ticker`, `volume`, `price`, `is_buy`) VALUES (?, UUID_TO_BIN(?), ?, ?, ?, ?)"
+	sql := "INSERT INTO request (`id`, `user_id`, `ticker`, `volume`, `price`, `is_buy`) VALUES (?, UUID_TO_BIN(?), ?, ?, ?, ?);"
 	res, errins := o.DB.Exec(sql, deal.Id, userid, deal.Ticker, deal.Volume, deal.Price, isBuy)
 	if errins != nil {
 		return -1, errins
 	}
 
+	fmt.Println("AddDeal done")
 	return res.LastInsertId()
 }
 
@@ -195,7 +199,7 @@ func (o *OrdersRepositoryMySql) GetDealsByUserId(userid string) ([]Deal, error) 
 	for rows.Next() {
 		var deal Deal
 		var isBuy bool
-		err := rows.Scan(&deal.Id, &deal.Ticker, &deal.Volume, &deal.Price, isBuy)
+		err := rows.Scan(&deal.Id, &deal.Ticker, &deal.Volume, &deal.Price, &isBuy)
 		if err != nil {
 			return deals, err
 		}
@@ -280,6 +284,7 @@ func (o *OrdersRepositoryMySql) GetStatisticSince(since time.Time, ticker string
 }
 
 func (o *OrdersRepositoryMySql) ChangePosition(userid string, ticker string, volumeChange int32) (*Position, error) {
+	fmt.Println("ChangePosition")
 	ctx := context.TODO()
 	tx, txerr := o.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted, ReadOnly: false})
 	if txerr != nil {
@@ -288,29 +293,37 @@ func (o *OrdersRepositoryMySql) ChangePosition(userid string, ticker string, vol
 	defer tx.Rollback()
 
 	var positionid int64
-	query := "SELECT `id`, `volume` FROM positions WHERE user_id = UUID_TO_BIN(?) AND ticker = ?"
-	row := tx.QueryRow(query, userid, ticker)
 	position := &Position{
 		Ticker: ticker,
 		Volume: 0,
 	}
-	err := row.Scan(positionid, &position.Volume)
+	query := "SELECT `id`, `volume` FROM positions WHERE user_id = UUID_TO_BIN(?) AND ticker = ?"
+	row := tx.QueryRow(query, userid, ticker)
+	err := row.Scan(&positionid, &position.Volume)
+	fmt.Println("ChangePosition scan:")
+	fmt.Println(positionid)
+	fmt.Println(position)
 	if err == sql.ErrNoRows {
 		insert := "INSERT INTO `positions` (`user_id`,`ticker`,`volume`) VALUES (UUID_TO_BIN(?), ?, ?)"
 		r, err2 := tx.Exec(insert, userid, ticker, 0)
+		fmt.Println("exec done")
 		if err2 != nil {
 			return nil, err2
 		}
+		fmt.Println("go to lastinsertedid")
 		positionid, err2 = r.LastInsertId()
 		if err2 != nil {
 			return nil, err2
 		}
-	}
-	if err != nil && err != sql.ErrNoRows {
+		fmt.Println("inserted")
+	} else if err != nil {
+		fmt.Println("error?")
+		fmt.Println(err)
 		return nil, err
 	}
 
 	position.Volume += volumeChange
+	fmt.Println("postiion volume")
 	update := "UPDATE `positions` SET `volume` = ? WHERE `id` = ?"
 	_, err2 := tx.Exec(update, position.Volume, positionid)
 	if err2 != nil {
