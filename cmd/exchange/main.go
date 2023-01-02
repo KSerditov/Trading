@@ -13,6 +13,21 @@ import (
 	"google.golang.org/grpc"
 )
 
+/* TBD FOR EXCHANGE
+1. Use channel to translate new tickers from tickers_inmem to trader and exchange statistics sender
+(tickers_inmem has infinite cycle that sends slice elements only if it fits time)
+
+2. Add authentication (brokerid - key based?)
+
+3. Add logging
+
+4. Validate nonunique broker id connections
+
+5. Write tests (consider separationg of trader layer from grpc server)
+
+6. Add configurations
+*/
+
 func main() {
 	tickers := &tickers.TickersSourceInMem{
 		FilePaths:    []string{`.\assets\SPFB.RTS_190517_190517.txt`, `.\assets\SPFB.Si_190517_190517.txt`},

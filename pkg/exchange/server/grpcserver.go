@@ -270,7 +270,7 @@ func (e *ExchangeSrv) StartTrader() error {
 								BrokerID: order.BrokerID,
 								ClientID: order.ClientID,
 								Ticker:   order.Ticker,
-								Volume:   dealvol,
+								Volume:   -dealvol,
 								Partial:  p,
 								Time:     int32(t.Timestamp.Unix()),
 								Price:    t.Last,

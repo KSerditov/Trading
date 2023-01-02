@@ -1,0 +1,563 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+      "title": "Swagger Petstore - OpenAPI 3.0",
+      "description": "This is a sample description",
+      "contact": {
+        "email": "serditov@gmail.com"
+      },
+      "version": "1.0.0"
+    },
+    "tags": [
+      {
+        "name": "orders",
+        "description": "Everything about your balance and orders"
+      },
+      {
+        "name": "user",
+        "description": "Operations about user"
+      }
+    ],
+    "paths": {
+      "/deal": {
+        "post": {
+          "tags": [
+            "orders"
+          ],
+          "summary": "Add new order request",
+          "description": "Add new order request",
+          "operationId": "createDeal",
+          "requestBody": {
+            "description": "Create a order request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deal"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful operation",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DealIdResponse"
+                  }
+                }
+              }
+            },
+            "405": {
+              "description": "Invalid input"
+            }
+          },
+          "security": [
+            {
+              "petstore_auth": [
+                "write:pets",
+                "read:pets"
+              ]
+            }
+          ]
+        }
+      },
+      "/cancel": {
+        "post": {
+          "tags": [
+            "orders"
+          ],
+          "summary": "Cancels order request",
+          "description": "",
+          "operationId": "cancelDeal",
+          "requestBody": {
+            "description": "Create a order request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DealId"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful operation",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CancelResponse"
+                  }
+                }
+              }
+            },
+            "405": {
+              "description": "Invalid input"
+            }
+          },
+          "security": [
+            {
+              "petstore_auth": [
+                "write:pets",
+                "read:pets"
+              ]
+            }
+          ]
+        }
+      },
+      "/status": {
+        "get": {
+          "tags": [
+            "orders"
+          ],
+          "summary": "Get balance and positions",
+          "description": "Get balance and positions",
+          "operationId": "getStatus",
+          "responses": {
+            "200": {
+              "description": "successful operation",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Status"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/history": {
+        "get": {
+          "tags": [
+            "orders"
+          ],
+          "summary": "Trading history for tickerId",
+          "description": "Get tickers history for tickerId",
+          "operationId": "getHistory",
+          "parameters": [
+            {
+              "name": "ticker",
+              "in": "query",
+              "description": "Ticker ID, for example \"SPB.Si\"",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "format": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "successful operation",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HistoryResponse"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Invalid ID supplied"
+            },
+            "404": {
+              "description": "Order not found"
+            }
+          }
+        }
+      },
+      "/user": {
+        "post": {
+          "tags": [
+            "user"
+          ],
+          "summary": "Create user",
+          "description": "This can only be done by the logged in user.",
+          "operationId": "createUser",
+          "requestBody": {
+            "description": "Created user object",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "responses": {
+            "default": {
+              "description": "successful operation",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/user/login": {
+        "get": {
+          "tags": [
+            "user"
+          ],
+          "summary": "Logs user into the system",
+          "description": "",
+          "operationId": "loginUser",
+          "parameters": [
+            {
+              "name": "username",
+              "in": "query",
+              "description": "The user name for login",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "password",
+              "in": "query",
+              "description": "The password for login in clear text",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "successful operation",
+              "headers": {
+                "X-Rate-Limit": {
+                  "description": "calls per hour allowed by the user",
+                  "schema": {
+                    "type": "integer",
+                    "format": "int32"
+                  }
+                },
+                "X-Expires-After": {
+                  "description": "date in UTC when token expires",
+                  "schema": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "content": {
+                "application/xml": {
+                  "schema": {
+                    "type": "string"
+                  }
+                },
+                "application/json": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Invalid username/password supplied"
+            }
+          }
+        }
+      },
+      "/user/logout": {
+        "get": {
+          "tags": [
+            "user"
+          ],
+          "summary": "Logs out current logged in user session",
+          "description": "",
+          "operationId": "logoutUser",
+          "parameters": [],
+          "responses": {
+            "default": {
+              "description": "successful operation"
+            }
+          }
+        }
+      },
+      "/user/{username}": {
+        "get": {
+          "tags": [
+            "user"
+          ],
+          "summary": "Get user by user name",
+          "description": "",
+          "operationId": "getUserByName",
+          "parameters": [
+            {
+              "name": "username",
+              "in": "path",
+              "description": "The name that needs to be fetched. Use user1 for testing. ",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "successful operation",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Invalid username supplied"
+            },
+            "404": {
+              "description": "User not found"
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "ohlcv": {
+          "type": "object",
+          "properties": {
+            "open": {
+              "type": "number"
+            },
+            "high": {
+              "type": "number"
+            },
+            "low": {
+              "type": "number"
+            },
+            "close": {
+              "type": "number"
+            },
+            "volume": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+          ]
+        },
+        "TickerOhlcv": {
+          "type": "object",
+          "properties": {
+            "ticker": {
+              "type": "string"
+            },
+            "prices": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ohlcv"
+              }
+            }
+          },
+          "required": [
+            "ticker",
+            "prices"
+          ]
+        },
+        "HistoryResponse": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/TickerOhlcv"
+              }
+            }
+          },
+          "required": [
+            "body"
+          ]
+        },
+        "DealId": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "example": "123"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "DealIdResponse": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "$ref": "#/components/schemas/DealId"
+            }
+          },
+          "required": [
+            "body"
+          ]
+        },
+        "CancelResponse": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/DealId"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "body"
+          ]
+        },
+        "Deal": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "example": 123
+            },
+            "ticker": {
+              "type": "string",
+              "example": "SPFB.RTS"
+            },
+            "type": {
+              "type": "string",
+              "example": "BUY",
+              "enum": [
+                "BUY",
+                "SELL"
+              ]
+            },
+            "volume": {
+              "type": "integer",
+              "example": 100
+            },
+            "price": {
+              "type": "integer",
+              "example": 11
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "ticker",
+            "type",
+            "volume",
+            "price"
+          ]
+        },
+        "Position": {
+          "type": "object",
+          "properties": {
+            "ticker": {
+              "type": "string",
+              "example": "SPB.RTS"
+            },
+            "volume": {
+              "type": "integer",
+              "example": 100
+            }
+          }
+        },
+        "Status": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "object",
+              "properties": {
+                "balance": {
+                  "type": "integer",
+                  "example": 100500
+                },
+                "positions": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Position"
+                  }
+                },
+                "open_orders": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Deal"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "User": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "format": "int64",
+              "example": 10
+            },
+            "username": {
+              "type": "string",
+              "example": "theUser"
+            },
+            "email": {
+              "type": "string",
+              "example": "john@email.com"
+            },
+            "password": {
+              "type": "string",
+              "example": "12345"
+            },
+            "userStatus": {
+              "type": "integer",
+              "description": "User Status",
+              "format": "int32",
+              "example": 1
+            }
+          },
+          "xml": {
+            "name": "user"
+          }
+        }
+      },
+      "securitySchemes": {
+        "petstore_auth": {
+          "type": "oauth2",
+          "flows": {
+            "implicit": {
+              "authorizationUrl": "https://petstore3.swagger.io/oauth/authorize",
+              "scopes": {
+                "write:pets": "modify pets in your account",
+                "read:pets": "read your pets"
+              }
+            }
+          }
+        },
+        "api_key": {
+          "type": "apiKey",
+          "name": "api_key",
+          "in": "header"
+        }
+      }
+    }
+  }

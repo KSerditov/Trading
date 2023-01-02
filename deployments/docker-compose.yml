@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  mysql:
+    image: 'mysql:latest'
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+      - MYSQL_DATABASE=broker
+    ports:
+      - '3306:3306'
+    volumes:
+      - './database/mysql/items.sql:/docker-entrypoint-initdb.d/items.sql'
+
