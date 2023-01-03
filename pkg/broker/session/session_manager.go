@@ -2,8 +2,8 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/KSerditov/Trading/pkg/broker/user"
@@ -30,7 +30,6 @@ type JWTClaims struct {
 }
 
 func (sm *JWTSessionManager) GetJWTClaimsFromToken(token string) (*JWTClaims, error) {
-	fmt.Printf("parsing jwt claim\n")
 	parsedtoken, err := jwt.ParseWithClaims(token, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(sm.Secret), nil
 	})
@@ -42,7 +41,6 @@ func (sm *JWTSessionManager) GetJWTClaimsFromToken(token string) (*JWTClaims, er
 	if !ok || !parsedtoken.Valid {
 		return &JWTClaims{}, ErrorTokenInvalid
 	}
-	fmt.Printf("token valid\n")
 
 	valid, serr := sm.SessionRepo.ValidateSession(claims.Sid)
 	if serr != nil {
@@ -51,12 +49,11 @@ func (sm *JWTSessionManager) GetJWTClaimsFromToken(token string) (*JWTClaims, er
 	if !valid {
 		return &JWTClaims{}, ErrNoSession
 	}
-	fmt.Printf("session valid\n")
 
 	return claims, nil
 }
 
-func (sm *JWTSessionManager) GetNewToken(user user.User) (string, *Session, error) {
+func (sm *JWTSessionManager) GetNewSession(user user.User) (string, *Session, error) {
 	sid := GetNewSession(user.ID)
 
 	var now = time.Now()
@@ -110,6 +107,25 @@ func (sm *JWTSessionManager) GetUserFromContext(ctx context.Context) (*user.User
 	}
 
 	return &jwtClaims.User, nil
+}
+
+func (sm *JWTSessionManager) DestroyCurrent(w http.ResponseWriter, r *http.Request) error {
+	sess, err := sm.GetSessionFromContext(r.Context())
+	if err == nil {
+		err1 := sm.SessionRepo.DeleteSession(sess.ID)
+		if err1 != nil {
+			return err1
+		}
+	}
+
+	cookie := http.Cookie{
+		Name:    "session",
+		Expires: time.Now().AddDate(0, 0, -1),
+		Path:    "/",
+	}
+	http.SetCookie(w, &cookie)
+
+	return nil
 }
 
 func RandStringRunes(n int) string {

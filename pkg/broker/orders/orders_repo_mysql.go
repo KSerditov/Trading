@@ -73,7 +73,7 @@ func (o *OrdersRepositoryMySql) ChangeBalance(userid string, amount int32) (int3
 	var balance int32
 	row2 := tx.QueryRow("SELECT `balance` FROM clients WHERE user_id = UUID_TO_BIN(?)", u.ID)
 	err2 := row2.Scan(&balance)
-	if err2 != nil || err2 == sql.ErrNoRows {
+	if err2 != nil && err2 != sql.ErrNoRows {
 		return 0, err2
 	}
 	/* validate in handler if needed

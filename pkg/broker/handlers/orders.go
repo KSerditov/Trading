@@ -122,11 +122,6 @@ func (o *OrderHandlers) CreateDeal(w http.ResponseWriter, r *http.Request) {
 func (o *OrderHandlers) CancelDeal(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sess, _ := o.SessMgr.GetSessionFromContext(ctx)
-	userEntity, usrerr := o.SessMgr.GetUserFromContext(ctx)
-	if usrerr != nil {
-		o.jsonMsg(w, usrerr.Error(), http.StatusBadRequest)
-		return
-	}
 
 	body, _ := ioutil.ReadAll(r.Body)
 	r.Body.Close()
@@ -138,7 +133,7 @@ func (o *OrderHandlers) CancelDeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err1 := o.OrdersRepo.GetDealByUserAndId(userEntity.ID, dealid.Id)
+	_, err1 := o.OrdersRepo.GetDealByUserAndId(sess.UserID, dealid.Id)
 	if err1 != nil {
 		o.jsonMsg(w, "deal does not exist", http.StatusBadRequest)
 		return
@@ -174,7 +169,7 @@ func (o *OrderHandlers) CancelDeal(w http.ResponseWriter, r *http.Request) {
 			//log error, but request has been posted to exchange, so return OK
 			custlog.CtxLog(ctx).Errorw("failed to delete deal from repository",
 				"session", sess,
-				"userid", userEntity.ID,
+				"userid", sess.UserID,
 				"deal", dealid.Id,
 			)
 		}
@@ -198,13 +193,6 @@ func (o *OrderHandlers) CancelDeal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OrderHandlers) GetHistory(w http.ResponseWriter, r *http.Request) {
-	/*vars := mux.Vars(r)
-	ticker, ok := vars["ticker"]
-	if !ok {
-		o.jsonMsg(w, "ticker param not provided", http.StatusBadRequest)
-		return
-	}*/
-
 	ticker := r.URL.Query().Get("ticker")
 	if ticker == "" {
 		o.jsonMsg(w, "ticker param not provided", http.StatusBadRequest)
@@ -234,11 +222,6 @@ func (o *OrderHandlers) GetHistory(w http.ResponseWriter, r *http.Request) {
 func (o *OrderHandlers) GetStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	sess, _ := o.SessMgr.GetSessionFromContext(ctx)
-	/*userEntity, usrerr := o.SessMgr.GetUserFromContext(ctx)
-	if usrerr != nil {
-		o.jsonMsg(w, usrerr.Error(), http.StatusBadRequest)
-		return
-	}*/
 
 	balance, err := o.OrdersRepo.GetBalance(sess.UserID)
 	if err != nil {

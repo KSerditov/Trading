@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -24,8 +26,14 @@ type ErrorDetails struct {
 	Msg      string `json:"msg"`
 }
 
-func (u *UserHandlers) performLogin(lf *user.LoginForm, user user.User, w http.ResponseWriter, r *http.Request) {
-	custlog.CtxLog(r.Context()).Debugw("Performing login", "user_id", user.ID)
+/*
+func (u *UserHandlers) Authorize(lf *user.LoginForm, w http.ResponseWriter, r *http.Request) {
+	user, err2 := u.UserRepo.GetUser(lf.Username)
+	if err2 != nil {
+		u.jsonMsg(w, err2.Error(), http.StatusUnauthorized)
+		return
+	}
+
 	ok, pwderr := u.UserRepo.ValidatePassword(user, lf.Password)
 	if pwderr != nil {
 		u.jsonMsg(w, pwderr.Error(), http.StatusUnauthorized)
@@ -35,29 +43,53 @@ func (u *UserHandlers) performLogin(lf *user.LoginForm, user user.User, w http.R
 		u.jsonMsg(w, "invalid password", http.StatusUnauthorized)
 		return
 	}
-	custlog.CtxLog(r.Context()).Debugw("Password validated", "user_id", user.ID)
 
-	tokenString, sess, err := u.SessMgr.GetNewToken(user)
+	tokenString, _, err := u.SessMgr.GetNewSession(user)
 	if err != nil {
 		u.jsonMsg(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	custlog.CtxLog(r.Context()).Debugw("new token issued", "token", tokenString)
+	cookie := &http.Cookie{
+		Name:     "session",
+		Value:    tokenString,
+		Expires:  time.Now().Add(90 * 24 * time.Hour),
+		Path:     "/",
+		HttpOnly: true,
+	}
+	http.SetCookie(w, cookie)
 
 	resp, _ := json.Marshal(map[string]interface{}{
 		"token": tokenString,
 	})
 	w.Write(resp)
 	w.Write([]byte("\n\n"))
+}*/
 
-	custlog.CtxLog(r.Context()).Infow("login success", "session", sess)
+func (u *UserHandlers) Authorize(lf *user.LoginForm) (string, error) {
+	fmt.Println(lf)
+	user, err2 := u.UserRepo.GetUser(lf.Username)
+	if err2 != nil {
+		return "", err2
+	}
+
+	ok, pwderr := u.UserRepo.ValidatePassword(user, lf.Password)
+	if pwderr != nil {
+		return "", pwderr
+	}
+	if !ok {
+		return "", errors.New("invalid password")
+	}
+
+	tokenString, _, err := u.SessMgr.GetNewSession(user)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
 }
 
 func (u *UserHandlers) Login(w http.ResponseWriter, r *http.Request) {
-	custlog.CtxLog(r.Context()).Debugw("login handler started")
-	defer custlog.CtxLog(r.Context()).Debugw("login handler completed")
-
 	if r.Header.Get("Content-Type") != "application/json" {
 		u.jsonMsg(w, "unknown payload", http.StatusBadRequest)
 		return
@@ -67,26 +99,26 @@ func (u *UserHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	r.Body.Close()
 
 	lf := &user.LoginForm{}
-
 	err := json.Unmarshal(body, lf)
 	if err != nil {
 		u.jsonMsg(w, "cant unpack payload", http.StatusBadRequest)
 		return
 	}
 
-	user, err2 := u.UserRepo.GetUser(lf.Username)
-	if err2 != nil {
-		u.jsonMsg(w, err2.Error(), http.StatusUnauthorized)
-		return
-	}
+	token, err := u.Authorize(lf)
 
-	u.performLogin(lf, user, w, r)
+	resp, _ := json.Marshal(map[string]interface{}{
+		"token": token,
+	})
+	w.Write(resp)
+	w.Write([]byte("\n\n"))
+}
+
+func (u *UserHandlers) Logout(w http.ResponseWriter, r *http.Request) {
+	u.SessMgr.DestroyCurrent(w, r)
 }
 
 func (u *UserHandlers) Register(w http.ResponseWriter, r *http.Request) {
-	custlog.CtxLog(r.Context()).Debugw("registration handler started")
-	defer custlog.CtxLog(r.Context()).Debugw("registration handler completed")
-
 	if r.Header.Get("Content-Type") != "application/json" {
 		u.jsonMsg(w, "unknown payload", http.StatusBadRequest)
 		return
@@ -136,7 +168,14 @@ func (u *UserHandlers) Register(w http.ResponseWriter, r *http.Request) {
 
 	custlog.CtxLog(r.Context()).Infow("registration success", "userid", user.ID, "username", user.Username)
 
-	u.performLogin(lf, user, w, r)
+	token, err := u.Authorize(lf)
+
+	resp, _ := json.Marshal(map[string]interface{}{
+		"token": token,
+	})
+	w.Write(resp)
+	w.Write([]byte("\n\n"))
+
 }
 
 func (u *UserHandlers) jsonMsg(w http.ResponseWriter, msg string, status int) {

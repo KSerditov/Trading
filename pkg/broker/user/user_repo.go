@@ -13,5 +13,6 @@ type UserRepository interface {
 
 var (
 	ErrorUserNotFound      = errors.New("user not found")
+	ErrorBadPassword       = errors.New("incorrect login or password")
 	ErrorUserAlreadyExists = errors.New("user already exists")
 )

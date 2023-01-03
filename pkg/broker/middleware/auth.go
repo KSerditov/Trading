@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"strings"
@@ -18,30 +17,57 @@ type AuthHandler struct {
 	UserRepo user.UserRepository
 }
 
+var (
+	noAuthUrls = map[string]struct{}{
+		"/register":        {},
+		"/login":           {},
+		"/":                {},
+		"/api/v1/register": {},
+		"/api/v1//login":   {},
+	}
+)
+
 /*
 Auth - проверяет наличие и валидность jwt у входящего запроса
 */
 func (a *AuthHandler) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		custlog.CtxLog(r.Context()).Debugw("authorization middleware started")
-		defer custlog.CtxLog(r.Context()).Debugw("authorization middleware completed")
-
-		auth := r.Header.Get("Authorization")
-		splitToken := strings.Split(auth, "Bearer")
-		if len(splitToken) < 2 {
-			a.jsonMsg(w, r, "cant retrieve token", http.StatusUnauthorized)
+		if _, ok := noAuthUrls[r.URL.Path]; ok {
+			next.ServeHTTP(w, r)
 			return
 		}
-		reqToken := strings.TrimSpace(splitToken[1])
-		fmt.Printf("reqToken %v\n", reqToken)
-		claims, err := a.SessMgr.GetJWTClaimsFromToken(reqToken)
+
+		token := ""
+		// get jwt token from auth header
+		auth := r.Header.Get("Authorization")
+		if auth != "" {
+			splitToken := strings.Split(auth, "Bearer")
+			if len(splitToken) < 2 {
+				a.jsonMsg(w, r, "cant retrieve token", http.StatusUnauthorized)
+				return
+			}
+			token = strings.TrimSpace(splitToken[1])
+		} else { // try to get from cookie
+			sessionCookie, err := r.Cookie("session")
+			if err != http.ErrNoCookie {
+				token = sessionCookie.Value
+			}
+		}
+
+		if token == "" {
+			a.jsonMsg(w, r, "no token provided", http.StatusUnauthorized)
+			return
+		}
+
+		// parse token
+		claims, err := a.SessMgr.GetJWTClaimsFromToken(token)
 		if err != nil {
 			a.jsonMsg(w, r, err.Error(), http.StatusUnauthorized)
 			return
 		}
 
 		ctx := r.Context()
-		ctx = context.WithValue(ctx, session.ClaimsContextKey{}, claims) //TBD i don't need both, need to remove user from context
+		ctx = context.WithValue(ctx, session.ClaimsContextKey{}, claims)
 
 		custlog.CtxLog(r.Context()).Infow("request authorization success",
 			"session", claims.Sid,

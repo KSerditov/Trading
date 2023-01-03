@@ -1,6 +1,7 @@
 package router
 
 import (
+	"html/template"
 	"net/http"
 	"os"
 
@@ -59,6 +60,18 @@ func (a *BrokerApp) Initialize(sessRepo *session.SessionRepository, userRepo *us
 		OrdersRepo: *a.OrdersRepo,
 	}
 
+	templates := template.Must(template.ParseGlob("c:/repositories/trading/web/templates/*"))
+
+	UserClientHandlers := &handlers.UserClientHandler{
+		BrokerBaseUrl: "http://127.0.0.1:8080",
+		Tmpl:          templates,
+		Logger:        a.Logger.Zap.Sugar(),
+		SessMgr:       sm,
+		UserRepo:      *a.UserRepo,
+		OrdersRepo:    *a.OrdersRepo,
+		UserAPI:       UserHandlers,
+	}
+
 	/*r.Path("/").Handler(http.FileServer(http.Dir("./web/")))
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./web/static"))))
 
@@ -96,21 +109,22 @@ func (a *BrokerApp) Initialize(sessRepo *session.SessionRepository, userRepo *us
 	r2del.Use(AuthMiddlware.Auth)*/
 
 	r := mux.NewRouter()
-	r.HandleFunc("/login", UserHandlers.Login)
-	r.HandleFunc("/register", UserHandlers.Register)
 
 	r1 := r.PathPrefix("/api/v1/").Subrouter()
+	r1.HandleFunc("/register", UserHandlers.Register)
+	r1.HandleFunc("/login", UserHandlers.Login)
+	r1.HandleFunc("/logout", UserHandlers.Logout)
 	r1.HandleFunc("/deal", OrderHandlers.CreateDeal)
 	r1.HandleFunc("/cancel", OrderHandlers.CancelDeal)
 	r1.HandleFunc("/status", OrderHandlers.GetStatus)
 	r1.HandleFunc("/history", OrderHandlers.GetHistory)
 	r1.Use(AuthMiddlware.Auth)
 
-	//api := r.PathPrefix("/api").Subrouter()
-	//api.HandleFunc("/login", UserHandlers.Login)
-	//api.HandleFunc("/register", UserHandlers.Register)
-	//api.HandleFunc("/user/{username}", ContentHandlers.UserPosts)
-	//api.Use(middleware.AddJsonContent)
+	r.HandleFunc("/login", UserClientHandlers.Login)
+	r.HandleFunc("/logout", UserClientHandlers.Logout)
+	r.HandleFunc("/positions", UserClientHandlers.Positions)
+	r.HandleFunc("/", UserClientHandlers.Index)
+	r.Use(AuthMiddlware.Auth)
 
 	router := middleware.Slasher(r)
 	router = middleware.AccessLog(router)

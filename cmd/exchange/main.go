@@ -26,6 +26,10 @@ import (
 5. Write tests (consider separationg of trader layer from grpc server)
 
 6. Add configurations
+
+7. Last partial deal should return partial = false
+
+8. Initialize DB instance and store everything there
 */
 
 func main() {

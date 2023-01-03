@@ -61,7 +61,6 @@ func (r *MySqlUserRepository) AddUser(username string, password string) (User, e
 	if err != nil {
 		return User{}, err
 	}
-
 	if exists == 1 {
 		return User{}, ErrorUserAlreadyExists
 	}

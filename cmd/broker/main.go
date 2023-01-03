@@ -12,28 +12,23 @@ import (
 
 /* TBD FOR BROKER
 
-1. Write web api schema based on swagger
+1. Setup swagger
 
-	GET /api/v1/status - returns balance + list of positions
-	POST /api/v1/deal - sends new order request
-	POST /api/v1/cancel - cancels order request
-	GET /api/v1/history?ticker=SPFB.RTS - returns history for ticker
-	POST /api/v1/login
-	POST /api/v1/register - username + password
-
-2. Initialize DB instance and store everything there
-
-4. Add logging
+2. Add logging
 
 5. Write tests
 
 6. Missing cookie save
 
-7. No way to obtaine missed data due to broker/connection failure
+7. No way to obtain missed data due to broker/connection failure
 
 8. Check amounts, balance int overflows
 
 9. gRPC connections reuse/pool?
+
+10. Logout
+
+11. Move completed order to order_history
 */
 
 func main() {
