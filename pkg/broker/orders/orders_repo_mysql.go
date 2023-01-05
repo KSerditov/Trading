@@ -46,6 +46,7 @@ func NewOrdersRepositoryMySql(dsn string) (OrdersRepository, error) {
 }
 
 func (o *OrdersRepositoryMySql) AddStatisticsEntity(e *exchange.OHLCV) (int64, error) {
+	//fmt.Printf("NEW STAT ENTRY: %v\n", e)
 	sql := "INSERT INTO stat(`time`, `interval`, `open`, `high`, `low`, `close`, `volume`, `ticker`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 	res, err := o.DB.Exec(sql, e.Time, e.Interval, e.Open, e.High, e.Low, e.Close, e.Volume, e.Ticker)
 	if err != nil {
@@ -112,7 +113,6 @@ func (o *OrdersRepositoryMySql) GetBalance(userid string) (int32, error) {
 }
 
 func (o *OrdersRepositoryMySql) AddDeal(userid string, deal Deal) (int64, error) {
-	fmt.Println("AddDeal checking user")
 	// check user exists
 	u := user.User{}
 	row := o.DB.QueryRow("SELECT BIN_TO_UUID(id) AS `id`, `username` AS `username` FROM users WHERE id = UUID_TO_BIN(?);", userid)

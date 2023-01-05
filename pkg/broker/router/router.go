@@ -66,47 +66,14 @@ func (a *BrokerApp) Initialize(sessRepo *session.SessionRepository, userRepo *us
 		BrokerBaseUrl: "http://127.0.0.1:8080",
 		Tmpl:          templates,
 		Logger:        a.Logger.Zap.Sugar(),
-		SessMgr:       sm,
-		UserRepo:      *a.UserRepo,
-		OrdersRepo:    *a.OrdersRepo,
-		UserAPI:       UserHandlers,
+
+		UserAPI:   UserHandlers,
+		OrdersAPI: OrderHandlers,
 	}
 
 	/*r.Path("/").Handler(http.FileServer(http.Dir("./web/")))
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./web/static"))))
-
-	r1 := r.PathPrefix("/api/posts").Subrouter()
-	r1.Use(middleware.AddJsonContent)
-	r1get := r1.Methods("GET").Subrouter()
-	r1post := r1.Methods("POST").Subrouter()
-
-	r1get.HandleFunc("/{category}", ContentHandlers.CategoryPosts)
-	r1get.HandleFunc("", ContentHandlers.Posts)
-
-	r1post.HandleFunc("", ContentHandlers.AddPost)
-	r1post.Use(AuthMiddlware.Auth)
-
-	r2 := r.PathPrefix("/api/post").Subrouter()
-	r2.Use(middleware.AddJsonContent)
-
-	r2get := r2.Methods("GET").Subrouter()
-	r2post := r2.Methods("POST").Subrouter()
-	r2del := r2.Methods("DELETE").Subrouter()
-
-	r2auth := r2.PathPrefix("/{postid}/").Methods("GET").Subrouter()
-	r2auth.HandleFunc("/upvote", ContentHandlers.UpvotePost)
-	r2auth.HandleFunc("/downvote", ContentHandlers.DownvotePost)
-	r2auth.HandleFunc("/unvote", ContentHandlers.UnvotePost)
-	r2auth.Use(AuthMiddlware.Auth)
-
-	r2get.HandleFunc("/{postid}", ContentHandlers.Post)
-
-	r2post.HandleFunc("/{postid}", ContentHandlers.AddComment)
-	r2post.Use(AuthMiddlware.Auth)
-
-	r2del.HandleFunc("/{postid}/{commentid}", ContentHandlers.DeleteComment)
-	r2del.HandleFunc("/{postid}", ContentHandlers.DeletePost)
-	r2del.Use(AuthMiddlware.Auth)*/
+	*/
 
 	r := mux.NewRouter()
 
@@ -114,15 +81,17 @@ func (a *BrokerApp) Initialize(sessRepo *session.SessionRepository, userRepo *us
 	r1.HandleFunc("/register", UserHandlers.Register)
 	r1.HandleFunc("/login", UserHandlers.Login)
 	r1.HandleFunc("/logout", UserHandlers.Logout)
-	r1.HandleFunc("/deal", OrderHandlers.CreateDeal)
-	r1.HandleFunc("/cancel", OrderHandlers.CancelDeal)
+	r1.HandleFunc("/deal", OrderHandlers.CreateDealHr)
+	r1.HandleFunc("/cancel", OrderHandlers.CancelDealHr)
 	r1.HandleFunc("/status", OrderHandlers.GetStatus)
 	r1.HandleFunc("/history", OrderHandlers.GetHistory)
 	r1.Use(AuthMiddlware.Auth)
 
 	r.HandleFunc("/login", UserClientHandlers.Login)
 	r.HandleFunc("/logout", UserClientHandlers.Logout)
+	r.HandleFunc("/deal", UserClientHandlers.Deal)
 	r.HandleFunc("/positions", UserClientHandlers.Positions)
+	r.HandleFunc("/history", UserClientHandlers.History)
 	r.HandleFunc("/", UserClientHandlers.Index)
 	r.Use(AuthMiddlware.Auth)
 

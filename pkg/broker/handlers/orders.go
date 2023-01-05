@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -28,44 +29,26 @@ type OrderHandlers struct {
 	HistoryDepthMin   int32
 }
 
-func (o *OrderHandlers) CreateDeal(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sess, _ := o.SessMgr.GetSessionFromContext(ctx)
-
-	body, _ := ioutil.ReadAll(r.Body)
-	r.Body.Close()
-	deal := &orders.Deal{}
-	err := json.Unmarshal(body, deal)
-	if err != nil {
-		o.jsonMsg(w, "cant unpack payload", http.StatusBadRequest)
-		return
-	}
-
+func (o *OrderHandlers) CreateDeal(userid string, deal *orders.Deal) (*exchange.DealID, int, error) {
 	switch strings.ToLower(deal.Type) {
 	case "buy":
-		balance, err := o.OrdersRepo.GetBalance(sess.UserID)
+		balance, err := o.OrdersRepo.GetBalance(userid)
 		if err != nil {
-			o.jsonMsg(w, "unable to retrieve user balance", http.StatusInternalServerError)
-			return
+			return nil, http.StatusInternalServerError, errors.New("unable to retrieve user balance")
 		}
-
 		if balance < deal.Price*deal.Volume {
-			o.jsonMsg(w, "insufficient balance to put buy request", http.StatusBadRequest)
-			return
+			return nil, http.StatusBadRequest, errors.New("insufficient balance to put buy request")
 		}
 	case "sell":
-		position, err := o.OrdersRepo.GetPositionByUserId(sess.UserID, deal.Ticker)
+		position, err := o.OrdersRepo.GetPositionByUserId(userid, deal.Ticker)
 		if err != nil {
-			o.jsonMsg(w, "unable to retrieve user positions", http.StatusInternalServerError)
-			return
+			return nil, http.StatusInternalServerError, errors.New("unable to retrieve user positions")
 		}
 		if position.Volume < deal.Volume {
-			o.jsonMsg(w, "not enough volume for position to put sell request", http.StatusBadRequest)
-			return
+			return nil, http.StatusInternalServerError, errors.New("not enough volume for position to put sell request")
 		}
 	default:
-		o.jsonMsg(w, "deal type can be buy or sell only", http.StatusBadRequest)
-		return
+		return nil, http.StatusBadRequest, errors.New("deal type can be buy or sell only")
 	}
 
 	grcpConn, err := grpc.Dial(
@@ -73,8 +56,7 @@ func (o *OrderHandlers) CreateDeal(w http.ResponseWriter, r *http.Request) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		o.jsonMsg(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, http.StatusInternalServerError, err
 	}
 	defer grcpConn.Close()
 
@@ -91,23 +73,41 @@ func (o *OrderHandlers) CreateDeal(w http.ResponseWriter, r *http.Request) {
 	}
 	dealid, err := c.Create(ctx1, exchdeal)
 	if err != nil {
-		o.jsonMsg(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, http.StatusInternalServerError, err
 	}
 	deal.Id = dealid.ID
 
-	fmt.Println("NEW DEAL:")
-	fmt.Println(deal)
+	fmt.Printf("NEW DEAL: %v\n", deal)
 
-	_, errr := o.OrdersRepo.AddDeal(sess.UserID, *deal)
+	_, errr := o.OrdersRepo.AddDeal(userid, *deal)
 	if errr != nil {
 		//log error, but request has been posted to exchange, so return OK
-		custlog.CtxLog(ctx).Errorw("failed to save deal to repository",
-			"session", sess,
-			"userid", sess.UserID,
+		custlog.CtxLog(context.TODO()).Errorw("failed to save deal to repository",
+			"userid", userid,
 			"deal", *deal,
 			"repository error", errr.Error(),
 		)
+	}
+	return dealid, http.StatusAccepted, nil
+}
+
+func (o *OrderHandlers) CreateDealHr(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sess, _ := o.SessMgr.GetSessionFromContext(ctx)
+
+	body, _ := ioutil.ReadAll(r.Body)
+	r.Body.Close()
+	deal := &orders.Deal{}
+	err := json.Unmarshal(body, deal)
+	if err != nil {
+		o.jsonMsg(w, "cant unpack payload", http.StatusBadRequest)
+		return
+	}
+
+	dealid, statucode, err := o.CreateDeal(sess.UserID, deal)
+	if err != nil {
+		o.jsonMsg(w, err.Error(), statucode)
+		return
 	}
 
 	d := &orders.DealIdResponse{
@@ -119,24 +119,10 @@ func (o *OrderHandlers) CreateDeal(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonPost)
 }
 
-func (o *OrderHandlers) CancelDeal(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sess, _ := o.SessMgr.GetSessionFromContext(ctx)
-
-	body, _ := ioutil.ReadAll(r.Body)
-	r.Body.Close()
-
-	dealid := &orders.DealId{}
-	err := json.Unmarshal(body, dealid)
-	if err != nil {
-		o.jsonMsg(w, "cant unpack payload", http.StatusBadRequest)
-		return
-	}
-
-	_, err1 := o.OrdersRepo.GetDealByUserAndId(sess.UserID, dealid.Id)
+func (o *OrderHandlers) CancelDeal(userid string, dealid *orders.DealId) (int, bool, error) {
+	_, err1 := o.OrdersRepo.GetDealByUserAndId(userid, dealid.Id)
 	if err1 != nil {
-		o.jsonMsg(w, "deal does not exist", http.StatusBadRequest)
-		return
+		return http.StatusBadRequest, false, errors.New("deal does not exist")
 	}
 
 	grcpConn, err := grpc.Dial(
@@ -144,8 +130,7 @@ func (o *OrderHandlers) CancelDeal(w http.ResponseWriter, r *http.Request) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		o.jsonMsg(w, err.Error(), http.StatusInternalServerError)
-		return
+		return http.StatusInternalServerError, false, err
 	}
 	defer grcpConn.Close()
 
@@ -157,37 +142,52 @@ func (o *OrderHandlers) CancelDeal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cancel, err := c.Cancel(ctx1, did)
+	if cancel.Success {
+		errr := o.OrdersRepo.DeleteDealById(dealid.Id)
+		if errr != nil {
+			//log error, but request has been posted to exchange, so return OK
+			custlog.CtxLog(context.TODO()).Errorw("failed to delete deal from repository",
+				"userid", userid,
+				"deal", dealid.Id,
+			)
+		}
+		return http.StatusOK, true, nil
+	}
+
+	return http.StatusOK, false, err
+}
+
+func (o *OrderHandlers) CancelDealHr(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sess, _ := o.SessMgr.GetSessionFromContext(ctx)
+
+	body, _ := ioutil.ReadAll(r.Body)
+	r.Body.Close()
+	dealid := &orders.DealId{}
+	err := json.Unmarshal(body, dealid)
+	if err != nil {
+		o.jsonMsg(w, "cant unpack payload", http.StatusBadRequest)
+		return
+	}
+
 	cancelResp := &orders.CancelResponse{
 		Body: &orders.AllOfCancelResponseBody{
 			Id:     dealid.Id,
 			Status: "Success",
 		},
 	}
-	if cancel.Success {
-		errr := o.OrdersRepo.DeleteDealById(dealid.Id)
-		if errr != nil {
-			//log error, but request has been posted to exchange, so return OK
-			custlog.CtxLog(ctx).Errorw("failed to delete deal from repository",
-				"session", sess,
-				"userid", sess.UserID,
-				"deal", dealid.Id,
-			)
-		}
+	statuscode, cancelled, err := o.CancelDeal(sess.UserID, dealid)
 
-		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	if cancelled {
 		w.WriteHeader(http.StatusOK)
 		jsonPost, _ := json.Marshal(cancelResp)
 		w.Write(jsonPost)
 		return
 	}
 
-	if err != nil {
-		cancelResp.Body.Status = fmt.Sprintf("error canceling deal: %v", err.Error())
-	} else {
-		cancelResp.Body.Status = "error canceling deal, no error returned from exchange"
-	}
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.WriteHeader(http.StatusBadRequest)
+	cancelResp.Body.Status = err.Error()
+	w.WriteHeader(statuscode)
 	jsonPost, _ := json.Marshal(cancelResp)
 	w.Write(jsonPost)
 }

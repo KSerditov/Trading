@@ -29,6 +29,8 @@ import (
 10. Logout
 
 11. Move completed order to order_history
+
+12. Automatic stream reconnect for Statistics/Results listeners
 */
 
 func main() {

@@ -35,7 +35,7 @@ type ExchangeSrv struct {
 // мы каждую секнуду будем получать отсюда событие с ценами, которые брокер аггрегирует у себя в минуты и показывает клиентам
 // устанавливается 1 раз брокером
 func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticServer exchange.Exchange_StatisticServer) error {
-	fmt.Println(brokerID)
+	fmt.Printf("Broker connected to Statistic, brokerId: %v\n", brokerID)
 	interval := time.Second * 1
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -44,9 +44,8 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 
 	for {
 		select {
-		//case ev := <-ch:
-
 		case timetick := <-ticker.C:
+			//fmt.Printf("TICK\n")
 			t, err := e.Tickers.GetTickersBeforeTS(timetick, interval)
 			if err != nil {
 				return err
@@ -59,6 +58,7 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 			for _, v := range t {
 				_, ok := ohlcvs[v.Ticker]
 				if !ok {
+					//fmt.Printf("NEW TICKER IN INTERVAL %v\n", v)
 					opents = v.Timestamp
 					closets = v.Timestamp
 
@@ -77,6 +77,8 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 
 					continue
 				}
+
+				//fmt.Printf("SAME TICKER IN INTERVAL %v\n", v)
 
 				atomic.AddInt32(&ohlcvs[v.Ticker].Volume, v.Vol)
 
@@ -99,6 +101,8 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 				}
 			}
 
+			//fmt.Printf("TICKERS AGGREGATE %v\n", ohlcvs)
+
 			for _, v := range ohlcvs {
 				errsend := exchangeStatisticServer.Send(v)
 
@@ -115,16 +119,13 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 
 // Adds new Order from broker to OrderBook and returns assigned unique DealID
 func (e *ExchangeSrv) Create(ctx context.Context, deal *exchange.Deal) (*exchange.DealID, error) {
+	fmt.Printf("new order received: %v\n", deal)
 	//deal.ID = atomic.AddInt64(&e.MaxDealID, 1)
 	deal.ID = int64(uuid.New().ID()) // since there is no persistence for exchange implemented
-	/*
-		var i big.Int
-		i.SetString(strings.Replace(uuid, "-", "", 4), 16)
-	*/
 
 	e.OrderBookLock.Lock()
 	e.OrderBook = append(e.OrderBook, deal)
-	fmt.Println(e.OrderBook)
+	fmt.Printf("order book now is: %v\n", e.OrderBook)
 	e.OrderBookLock.Unlock()
 
 	dealid := &exchange.DealID{
@@ -132,6 +133,7 @@ func (e *ExchangeSrv) Create(ctx context.Context, deal *exchange.Deal) (*exchang
 		BrokerID: int64(deal.BrokerID),
 	}
 
+	fmt.Printf("returning dealid: %v\n", dealid)
 	return dealid, nil
 }
 
@@ -161,7 +163,7 @@ func (e *ExchangeSrv) Cancel(ctx context.Context, deal *exchange.DealID) (*excha
 // исполнение заявок от биржи к брокеру
 // устанавливается 1 раз брокером и при исполнении какой-то заявки
 func (e *ExchangeSrv) Results(brokerID *exchange.BrokerID, exchangeResultsServer exchange.Exchange_ResultsServer) error {
-	fmt.Printf("Broker Results connected, brokerid %v\n", brokerID)
+	fmt.Printf("Broker connected to Results, brokerId: %v\n", brokerID)
 	c, err := e.GetBrokerChannel(brokerID)
 	if err != nil {
 		return err
@@ -205,7 +207,7 @@ func (e *ExchangeSrv) StartTrader() error {
 				if err != nil {
 					return err
 				}
-				fmt.Printf("TRADER: %v\n", tickers)
+				//fmt.Printf("TRADER: %v\n", tickers)
 
 				e.OrderBookLock.Lock()
 				for i, order := range e.OrderBook {

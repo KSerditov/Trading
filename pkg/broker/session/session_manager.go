@@ -118,12 +118,16 @@ func (sm *JWTSessionManager) DestroyCurrent(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	cookie := http.Cookie{
+	cookie := &http.Cookie{
 		Name:    "session",
-		Expires: time.Now().AddDate(0, 0, -1),
+		Value:   "",
 		Path:    "/",
+		Expires: time.Unix(0, 0),
+
+		HttpOnly: true,
 	}
-	http.SetCookie(w, &cookie)
+
+	http.SetCookie(w, cookie)
 
 	return nil
 }
