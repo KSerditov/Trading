@@ -31,6 +31,8 @@ import (
 11. Move completed order to order_history
 
 12. Automatic stream reconnect for Statistics/Results listeners
+
+13. Data types are not consistent between broker and exchange
 */
 
 func main() {

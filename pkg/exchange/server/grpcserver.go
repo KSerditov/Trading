@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/KSerditov/Trading/pkg/exchange/tickers"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 )
 
 type ExchangeSrv struct {
@@ -31,8 +34,68 @@ type ExchangeSrv struct {
 	exchange.UnimplementedExchangeServer
 }
 
+func Start(ctx context.Context, listenAddr string, ACLData string, datasource tickers.TickersSource) error {
+	/*
+		auther := Authenticator{}
+		errjson := json.Unmarshal([]byte(ACLData), &auther.accessList)
+		if errjson != nil {
+			return errjson
+		}
+	*/
+
+	s := &ExchangeSrv{
+		BufferSize:                  100,
+		Tickers:                     datasource,
+		MaxDealID:                   0,
+		OrderBookLock:               &sync.RWMutex{},
+		OrderBook:                   make([]*exchange.Deal, 0, 100),
+		ChannelsLock:                &sync.RWMutex{},
+		Channels:                    make(map[int64]chan *exchange.Deal, 10),
+		UnimplementedExchangeServer: exchange.UnimplementedExchangeServer{},
+	}
+
+	lis, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		log.Fatalln("cant listen port", err)
+		return err
+	}
+
+	server := grpc.NewServer(
+		grpc.ChainStreamInterceptor(
+		//logStreamInterceptor,
+		//auther.AuthStreamInterceptor,
+		),
+		grpc.ChainUnaryInterceptor(
+		//logInterceptor,
+		//auther.AuthInterceptor,
+		),
+	)
+
+	exchange.RegisterExchangeServer(server, s)
+
+	go func(s *grpc.Server) {
+		for {
+			<-ctx.Done()
+			datasource.CloseFeed()
+			s.GracefulStop()
+			return
+		}
+	}(server)
+
+	fmt.Println("Starting exchange server...")
+
+	s.StartTrader()
+
+	errs := server.Serve(lis)
+	if errs != nil {
+		return errs
+	}
+
+	return nil
+}
+
 // поток ценовых данных от биржи к брокеру
-// мы каждую секнуду будем получать отсюда событие с ценами, которые брокер аггрегирует у себя в минуты и показывает клиентам
+// мы каждую секнуду будем получать отсюда событие с ценами, которые брокер аггрегирует у себя и показывает клиентам
 // устанавливается 1 раз брокером
 func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticServer exchange.Exchange_StatisticServer) error {
 	fmt.Printf("Broker connected to Statistic, brokerId: %v\n", brokerID)
@@ -41,75 +104,79 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 	defer ticker.Stop()
 
 	ctx := exchangeStatisticServer.Context()
+	feed := e.Tickers.GetFeedChannel()
+
+	var opents, closets time.Time
+	ohlcvs := make(map[string]*exchange.OHLCV, 2)
+	ohlcvsLock := &sync.RWMutex{}
 
 	for {
 		select {
+		// new ticker from feed - collect data into ohlcv map per each ticker value
+		case v := <-feed:
+			//fmt.Printf("STATISTICS NEW TICKER FROM FEED %v\n", v)
+			ohlcvsLock.Lock()
+			_, ok := ohlcvs[v.Ticker]
+			if !ok { // add new ticker first time in interval
+				opents = v.Timestamp
+				closets = v.Timestamp
+
+				newOHLCV := &exchange.OHLCV{
+					ID:       atomic.AddInt64(&e.ohlcvId, 1),
+					Time:     int32(v.Timestamp.Unix()),
+					Interval: int32(interval.Seconds()),
+					Open:     v.Last,
+					High:     v.Last,
+					Low:      v.Last,
+					Close:    v.Last,
+					Volume:   v.Vol,
+					Ticker:   v.Ticker,
+				}
+				ohlcvs[v.Ticker] = newOHLCV
+				ohlcvsLock.Unlock()
+				continue
+			}
+
+			// aggregation
+			atomic.AddInt32(&ohlcvs[v.Ticker].Volume, v.Vol)
+
+			if v.Last > ohlcvs[v.Ticker].High {
+				ohlcvs[v.Ticker].High = v.Last
+			}
+
+			if v.Last < ohlcvs[v.Ticker].Low {
+				ohlcvs[v.Ticker].Low = v.Last
+			}
+
+			if v.Timestamp.After(closets) {
+				ohlcvs[v.Ticker].Close = v.Last
+				closets = v.Timestamp
+			}
+
+			if v.Timestamp.Before(opents) {
+				ohlcvs[v.Ticker].Open = v.Last
+				opents = v.Timestamp
+			}
+
+			//fmt.Printf("STATISTICS AGGREGATE %v\n", ohlcvs[v.Ticker])
+			ohlcvsLock.Unlock()
+
+		// broker notification interval elapsed - send collected data
 		case timetick := <-ticker.C:
-			//fmt.Printf("TICK\n")
-			t, err := e.Tickers.GetTickersBeforeTS(timetick, interval)
-			if err != nil {
-				return err
-			}
-
-			var ohlcvs map[string]*exchange.OHLCV
-			ohlcvs = make(map[string]*exchange.OHLCV, 2)
-			var opents, closets time.Time
-
-			for _, v := range t {
-				_, ok := ohlcvs[v.Ticker]
-				if !ok {
-					//fmt.Printf("NEW TICKER IN INTERVAL %v\n", v)
-					opents = v.Timestamp
-					closets = v.Timestamp
-
-					newOHLCV := &exchange.OHLCV{
-						ID:       atomic.AddInt64(&e.ohlcvId, 1),
-						Time:     int32(timetick.Unix()),
-						Interval: int32(interval),
-						Open:     v.Last,
-						High:     v.Last,
-						Low:      v.Last,
-						Close:    v.Last,
-						Volume:   v.Vol,
-						Ticker:   v.Ticker,
-					}
-					ohlcvs[v.Ticker] = newOHLCV
-
-					continue
-				}
-
-				//fmt.Printf("SAME TICKER IN INTERVAL %v\n", v)
-
-				atomic.AddInt32(&ohlcvs[v.Ticker].Volume, v.Vol)
-
-				if v.Last > ohlcvs[v.Ticker].High {
-					ohlcvs[v.Ticker].High = v.Last
-				}
-
-				if v.Last < ohlcvs[v.Ticker].Low {
-					ohlcvs[v.Ticker].Low = v.Last
-				}
-
-				if v.Timestamp.After(closets) {
-					ohlcvs[v.Ticker].Close = v.Last
-					closets = v.Timestamp
-				}
-
-				if v.Timestamp.Before(opents) {
-					ohlcvs[v.Ticker].Open = v.Last
-					opents = v.Timestamp
-				}
-			}
-
-			//fmt.Printf("TICKERS AGGREGATE %v\n", ohlcvs)
-
+			//fmt.Printf("STATISTICS NEW TIME TICK\n")
+			ohlcvsLock.Lock()
 			for _, v := range ohlcvs {
+				v.Time = int32(timetick.Unix())
+				//fmt.Printf("STATISTICS SENDING %v\n", v)
 				errsend := exchangeStatisticServer.Send(v)
 
 				if errsend != nil {
+					ohlcvsLock.Unlock()
 					return errsend
 				}
 			}
+			ohlcvs = make(map[string]*exchange.OHLCV, 2)
+			ohlcvsLock.Unlock()
 
 		case <-ctx.Done():
 			return nil
@@ -121,7 +188,7 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 func (e *ExchangeSrv) Create(ctx context.Context, deal *exchange.Deal) (*exchange.DealID, error) {
 	fmt.Printf("new order received: %v\n", deal)
 	//deal.ID = atomic.AddInt64(&e.MaxDealID, 1)
-	deal.ID = int64(uuid.New().ID()) // since there is no persistence for exchange implemented
+	deal.ID = int64(uuid.New().ID()) // since there is no persistence for exchange yet
 
 	e.OrderBookLock.Lock()
 	e.OrderBook = append(e.OrderBook, deal)
@@ -163,6 +230,8 @@ func (e *ExchangeSrv) Cancel(ctx context.Context, deal *exchange.DealID) (*excha
 // исполнение заявок от биржи к брокеру
 // устанавливается 1 раз брокером и при исполнении какой-то заявки
 func (e *ExchangeSrv) Results(brokerID *exchange.BrokerID, exchangeResultsServer exchange.Exchange_ResultsServer) error {
+	defer e.DeleteBrokerChannel(brokerID)
+
 	fmt.Printf("Broker connected to Results, brokerId: %v\n", brokerID)
 	c, err := e.GetBrokerChannel(brokerID)
 	if err != nil {
@@ -176,7 +245,13 @@ func (e *ExchangeSrv) Results(brokerID *exchange.BrokerID, exchangeResultsServer
 			fmt.Printf("Error sending Results: %v", errsend)
 		}
 	}
+}
 
+func (e *ExchangeSrv) DeleteBrokerChannel(brokerId *exchange.BrokerID) {
+	e.ChannelsLock.Lock()
+	defer e.ChannelsLock.Unlock()
+
+	delete(e.Channels, brokerId.ID)
 }
 
 func (e *ExchangeSrv) GetBrokerChannel(brokerId *exchange.BrokerID) (chan *exchange.Deal, error) {
@@ -195,102 +270,87 @@ func (e *ExchangeSrv) GetBrokerChannel(brokerId *exchange.BrokerID) (chan *excha
 func (e *ExchangeSrv) StartTrader() error {
 	fmt.Println("Starting trader...")
 
-	go func() error {
-		interval := time.Second * 5
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case timetick := <-ticker.C:
-				tickers, err := e.Tickers.GetTickersBeforeTS(timetick, interval)
-				if err != nil {
-					return err
-				}
-				//fmt.Printf("TRADER: %v\n", tickers)
-
-				e.OrderBookLock.Lock()
-				for i, order := range e.OrderBook {
-					fmt.Printf("TRADER ORDER: %v\n", order)
-					if order.Volume == 0 {
-						e.OrderBook = append(e.OrderBook[:i], e.OrderBook[i+1:]...)
-						continue
-					}
-
-					for j, t := range tickers {
-						fmt.Printf("TRADER TICKER: %v\n", t)
-						if t.Ticker != order.Ticker || t.Vol == 0 {
-							continue
-						}
-
-						// exchange sells, broker buys
-						if order.Price > 0 && order.Price > t.Last {
-							fmt.Printf("TRADER SELLS ORDER VOL %v\n", order.Volume)
-							var dealvol int32
-							var p bool
-							if order.Volume >= t.Vol {
-								dealvol = t.Vol
-								p = true
-							} else {
-								dealvol = order.Volume
-							}
-							e.OrderBook[i].Volume -= dealvol
-							tickers[j].Vol -= dealvol
-
-							c, err := e.GetBrokerChannel(&exchange.BrokerID{
-								ID: int64(order.BrokerID),
-							})
-							if err != nil {
-								fmt.Printf("Error getting broker channel: %v\n", err)
-							}
-							d1 := &exchange.Deal{
-								ID:       order.ID,
-								BrokerID: order.BrokerID,
-								ClientID: order.ClientID,
-								Ticker:   order.Ticker,
-								Volume:   dealvol,
-								Partial:  p,
-								Time:     int32(t.Timestamp.Unix()),
-								Price:    t.Last,
-							}
-							c <- d1
-							break
-						}
-
-						// exchange buys, broker sells
-						if order.Price < 0 && -order.Price < t.Last {
-							fmt.Printf(" - TRADER BUYS\n")
-							fmt.Printf("ORDER VOL %v\n", order.Volume)
-							var dealvol int32
-							var p bool
-							dealvol = order.Volume
-
-							e.OrderBook[i].Volume -= dealvol
-							tickers[j].Vol += dealvol
-
-							c, err := e.GetBrokerChannel(&exchange.BrokerID{
-								ID: int64(order.BrokerID),
-							})
-							if err != nil {
-								fmt.Printf("Error getting broker channel: %v\n", err)
-							}
-							d1 := &exchange.Deal{
-								ID:       order.ID,
-								BrokerID: order.BrokerID,
-								ClientID: order.ClientID,
-								Ticker:   order.Ticker,
-								Volume:   -dealvol,
-								Partial:  p,
-								Time:     int32(t.Timestamp.Unix()),
-								Price:    t.Last,
-							}
-							c <- d1
-							break
-						}
-					}
-				}
-				e.OrderBookLock.Unlock()
+	go func() {
+		feed := e.Tickers.GetFeedChannel()
+		for t := range feed {
+			// new ticker received from ticker feed
+			fmt.Printf("TRADER TICKER: %v\n", t)
+			if t.Vol == 0 {
+				continue
 			}
+
+			e.OrderBookLock.Lock()
+
+			// go through incomplete orders
+			for i, order := range e.OrderBook {
+				// drop completed orders or orders with 0 price
+				if order.Volume == 0 || order.Price == 0 {
+					e.OrderBook = append(e.OrderBook[:i], e.OrderBook[i+1:]...)
+					continue
+				}
+
+				fmt.Printf("TRADER ORDER: %v\n", order)
+				if order.Ticker != t.Ticker {
+					continue
+				}
+
+				c, err := e.GetBrokerChannel(&exchange.BrokerID{
+					ID: int64(order.BrokerID),
+				})
+				if err != nil {
+					fmt.Printf("Error getting broker channel: %v\n", err)
+				}
+
+				// prepare deal
+				deal := &exchange.Deal{
+					ID:       order.ID,
+					BrokerID: order.BrokerID,
+					ClientID: order.ClientID,
+					Ticker:   order.Ticker,
+					Time:     int32(t.Timestamp.Unix()),
+					Price:    t.Last,
+					Partial:  false,
+				}
+
+				if order.Volume > t.Vol {
+					deal.Volume = t.Vol
+					deal.Partial = true
+				} else {
+					deal.Volume = order.Volume
+				}
+
+				// make deal if price conditions are met
+				// pending deal price exceeds ticker from feed, then exchange sells, broker buys
+				// positive price expected if pending deal has BUY type
+				if order.Price > 0 && order.Price >= t.Last {
+					fmt.Printf("TRADER SELLS ORDER VOL %v\n", order.Volume)
+
+					e.OrderBook[i].Volume -= deal.Volume
+					t.Vol -= deal.Volume
+
+					fmt.Printf("TRADER SOLD %v\n", deal)
+
+					c <- deal
+					continue
+				}
+
+				// exchange buys, broker sells
+				// negative price expected if pending deal has SELL type
+				//
+				if order.Price < 0 && -order.Price <= t.Last {
+					fmt.Printf("TRADER BUYS ORDER VOL %v\n", order.Volume)
+
+					e.OrderBook[i].Volume -= deal.Volume
+					t.Vol += deal.Volume
+
+					fmt.Printf("TRADER BOUGHT %v\n", deal)
+
+					c <- deal
+					continue
+				}
+			}
+
+			e.OrderBookLock.Unlock()
 		}
 	}()
 

@@ -11,5 +11,6 @@ type Tick struct {
 
 type TickersSource interface {
 	Init() error
-	GetTickersBeforeTS(ts time.Time, beforeInterval time.Duration) ([]Tick, error)
+	GetFeedChannel() <-chan Tick
+	CloseFeed()
 }

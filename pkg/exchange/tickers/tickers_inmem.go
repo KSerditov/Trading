@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,22 +17,11 @@ type TickersSourceInMem struct {
 	FilePaths    []string
 	UseTodayDate bool
 
-	TickersLock *sync.RWMutex
-	Tickers     []Tick
-}
+	tickersLock *sync.RWMutex
+	tickers     []Tick
 
-func (d *TickersSourceInMem) GetTickersBeforeTS(ts time.Time, beforeInterval time.Duration) ([]Tick, error) {
-	d.TickersLock.RLock()
-	defer d.TickersLock.RUnlock()
-
-	tickers := make([]Tick, 0, 100)
-	for _, v := range d.Tickers {
-		if v.Timestamp.Before(ts) && v.Timestamp.After(ts.Add(-beforeInterval)) {
-			tickers = append(tickers, v)
-		}
-	}
-
-	return tickers, nil
+	channelsLock *sync.RWMutex
+	channels     []chan Tick
 }
 
 func (d *TickersSourceInMem) Init() error {
@@ -39,12 +29,16 @@ func (d *TickersSourceInMem) Init() error {
 		return errors.New("empty list of input files for tickers data")
 	}
 
-	fmt.Println("Historical data load completed")
+	d.tickersLock = &sync.RWMutex{}
+	d.channelsLock = &sync.RWMutex{}
 
-	d.TickersLock.Lock()
-	defer d.TickersLock.Unlock()
-	d.Tickers = make([]Tick, 0, 300000)
+	d.channels = make([]chan Tick, 0, 2)
 
+	d.tickersLock.Lock()
+	defer d.tickersLock.Unlock()
+	d.tickers = make([]Tick, 0, 300000)
+
+	//read all to memory
 	for _, f := range d.FilePaths {
 		file, err := os.Open(f)
 		if err != nil {
@@ -84,9 +78,84 @@ func (d *TickersSourceInMem) Init() error {
 				Vol:       int32(v),
 			}
 
-			d.Tickers = append(d.Tickers, *t)
+			d.tickers = append(d.tickers, *t)
 		}
 	}
 
+	// sort by timestamp ascending
+	sort.SliceStable(d.tickers, func(i, j int) bool {
+		return d.tickers[i].Timestamp.Before(d.tickers[j].Timestamp)
+	})
+
+	fmt.Println("Historical data load completed")
+	fmt.Println("Starting tickers feed")
+
+	go d.feed()
+
 	return nil
+}
+
+func (d *TickersSourceInMem) GetFeedChannel() <-chan Tick {
+	c := make(chan Tick, 100)
+
+	d.channelsLock.Lock()
+	d.channels = append(d.channels, c)
+	d.channelsLock.Unlock()
+
+	return c
+}
+
+func (d *TickersSourceInMem) CloseFeed() {
+	d.channelsLock.Lock()
+	defer d.channelsLock.Unlock()
+
+	for _, v := range d.channels {
+		close(v)
+	}
+
+	//clean up channels, not needed for now since it should happen only on final stop of exchange
+	//d.channels = make([]chan Tick, 0, 2)
+}
+
+/* another way to feed consumers with tickers
+ */
+func (d *TickersSourceInMem) feed() {
+	// discard everything before exchange startup
+	now := time.Now()
+	for i, v := range d.tickers {
+		if v.Timestamp.After(now) {
+			d.tickers = d.tickers[i:]
+			break
+		}
+	}
+
+	interval := time.Second * 1
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// each second push all tickers with appropriate timestamp to listeners
+	var l int64
+	for range ticker.C {
+		d.tickersLock.RLock()
+
+		var maxid int
+		tsnow := time.Now()
+		for j, k := range d.tickers {
+			if k.Timestamp.Before(tsnow) {
+				maxid = j + 1
+
+				d.channelsLock.Lock()
+				for _, c := range d.channels {
+					c <- k
+				}
+				d.channelsLock.Unlock()
+			} else {
+				break
+			}
+		}
+		d.tickers = d.tickers[maxid:]
+		d.tickersLock.RUnlock()
+
+		l += 1
+	}
 }
