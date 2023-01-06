@@ -76,3 +76,8 @@ CREATE TABLE `stat` ( -- запросы
     `ticker` varchar(300),
     KEY id(id)
 );
+
+INSERT INTO `users`
+VALUES (UUID_TO_BIN('177da24e-1e5a-4eee-84c2-8a5fe4457f03'), 'megaurich', '25d55ad283aa400af464c76d713c07ad');
+
+INSERT INTO `clients` (`user_id`, `balance`) VALUES (UUID_TO_BIN('177da24e-1e5a-4eee-84c2-8a5fe4457f03'), 100500000);
