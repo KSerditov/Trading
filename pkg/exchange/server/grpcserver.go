@@ -104,6 +104,7 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 	defer ticker.Stop()
 
 	ctx := exchangeStatisticServer.Context()
+	//fmt.Printf("STATISTICS requesting feed channel\n")
 	feed := e.Tickers.GetFeedChannel()
 
 	var opents, closets time.Time
@@ -186,13 +187,13 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 
 // Adds new Order from broker to OrderBook and returns assigned unique DealID
 func (e *ExchangeSrv) Create(ctx context.Context, deal *exchange.Deal) (*exchange.DealID, error) {
-	fmt.Printf("new order received: %v\n", deal)
+	//fmt.Printf("new order received: %v\n", deal)
 	//deal.ID = atomic.AddInt64(&e.MaxDealID, 1)
 	deal.ID = int64(uuid.New().ID()) // since there is no persistence for exchange yet
 
 	e.OrderBookLock.Lock()
 	e.OrderBook = append(e.OrderBook, deal)
-	fmt.Printf("order book now is: %v\n", e.OrderBook)
+	//fmt.Printf("order book now is: %v\n", e.OrderBook)
 	e.OrderBookLock.Unlock()
 
 	dealid := &exchange.DealID{
@@ -200,7 +201,7 @@ func (e *ExchangeSrv) Create(ctx context.Context, deal *exchange.Deal) (*exchang
 		BrokerID: int64(deal.BrokerID),
 	}
 
-	fmt.Printf("returning dealid: %v\n", dealid)
+	//fmt.Printf("returning dealid: %v\n", dealid)
 	return dealid, nil
 }
 
@@ -232,7 +233,7 @@ func (e *ExchangeSrv) Cancel(ctx context.Context, deal *exchange.DealID) (*excha
 func (e *ExchangeSrv) Results(brokerID *exchange.BrokerID, exchangeResultsServer exchange.Exchange_ResultsServer) error {
 	defer e.DeleteBrokerChannel(brokerID)
 
-	fmt.Printf("Broker connected to Results, brokerId: %v\n", brokerID)
+	//fmt.Printf("Broker connected to Results, brokerId: %v\n", brokerID)
 	c, err := e.GetBrokerChannel(brokerID)
 	if err != nil {
 		return err
@@ -274,7 +275,7 @@ func (e *ExchangeSrv) StartTrader() error {
 		feed := e.Tickers.GetFeedChannel()
 		for t := range feed {
 			// new ticker received from ticker feed
-			fmt.Printf("TRADER TICKER: %v\n", t)
+			//fmt.Printf("TRADER TICKER: %v\n", t)
 			if t.Vol == 0 {
 				continue
 			}
@@ -354,5 +355,6 @@ func (e *ExchangeSrv) StartTrader() error {
 		}
 	}()
 
+	fmt.Println("Trader started...")
 	return nil
 }

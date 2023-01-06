@@ -89,6 +89,15 @@ func (u *UserHandlers) Authorize(lf *user.LoginForm) (string, error) {
 	return tokenString, nil
 }
 
+// swagger:route POST /login Performs login
+//
+// Login endpoint
+//
+// Returns JWT token on succesful authorization
+//
+// responses:
+//   200: Token json
+//   400: Message json
 func (u *UserHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		u.jsonMsg(w, "unknown payload", http.StatusBadRequest)
@@ -114,6 +123,14 @@ func (u *UserHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("\n\n"))
 }
 
+// swagger:route GET /logout Performs logout
+//
+// Logout endpoint
+//
+// Deletes current user session
+//
+// responses:
+//   200: empty response
 func (u *UserHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	u.SessMgr.DestroyCurrent(w, r)
 }
@@ -169,6 +186,10 @@ func (u *UserHandlers) Register(w http.ResponseWriter, r *http.Request) {
 	custlog.CtxLog(r.Context()).Infow("registration success", "userid", user.ID, "username", user.Username)
 
 	token, err := u.Authorize(lf)
+	if err != nil {
+		u.jsonMsg(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	resp, _ := json.Marshal(map[string]interface{}{
 		"token": token,

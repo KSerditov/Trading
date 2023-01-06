@@ -1,6 +1,7 @@
 version: '3'
 
 services:
+
   mysql:
     image: 'mysql:latest'
     environment:
@@ -11,3 +12,12 @@ services:
     volumes:
       - './database/mysql/items.sql:/docker-entrypoint-initdb.d/items.sql'
 
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger_ui_container
+    ports:
+        - "8080:8080"
+    volumes:
+      - ../api/broker/swagger.json:/swagger.json
+    environment:
+      SWAGGER_JSON: /swagger.json

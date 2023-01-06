@@ -1,14 +1,20 @@
 package server
 
 import (
+	"context"
+	"io"
+	"reflect"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/KSerditov/Trading/api/exchange"
+	"github.com/KSerditov/Trading/pkg/exchange/tickers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
-	// какой адрес-порт слушать серверу
 	listenAddr string = "127.0.0.1:8082"
 )
 
@@ -23,141 +29,158 @@ func getGrpcConn(t *testing.T) *grpc.ClientConn {
 	return grcpConn
 }
 
-/*
-func TestStat(t *testing.T) {
-	ctx, finish := context.WithCancel(context.Background())
-	err := Start(ctx, `127.0.0.1:8082`, ``, tickers)
-	if err != nil {
-		t.Fatalf("cant start server initial: %v", err)
+type TickersSourceTest struct {
+	chLock *sync.RWMutex
+	ch     []chan tickers.Tick
+}
+
+func (t *TickersSourceTest) GetFeedChannel() <-chan tickers.Tick {
+	c := make(chan tickers.Tick, 100)
+
+	t.chLock.Lock()
+	t.ch = append(t.ch, c)
+	t.chLock.Unlock()
+
+	return c
+}
+
+func (t *TickersSourceTest) CloseFeed() {
+	t.chLock.Lock()
+	defer t.chLock.Unlock()
+
+	for _, c := range t.ch {
+		close(c)
 	}
-	wait(1)
-	defer func() {
-		finish()
-		wait(2)
-	}()
+}
+
+func (t *TickersSourceTest) Run(tickers []tickers.Tick) {
+	for _, v := range tickers {
+		for _, c := range t.ch {
+			c <- v
+		}
+	}
+}
+
+type PlainOHLCV struct {
+	Open   float32
+	High   float32
+	Low    float32
+	Close  float32
+	Volume int32
+	Ticker string
+}
+
+type StatTests struct {
+	tickers  []tickers.Tick
+	expected PlainOHLCV
+}
+
+var (
+	stattests = []StatTests{
+		{
+			tickers: []tickers.Tick{
+				{
+					Ticker:    "SPFB.RTS",
+					Timestamp: time.Now().Add(time.Second * 3),
+					Last:      100,
+					Vol:       1,
+				},
+			},
+			expected: PlainOHLCV{
+				Open:   100,
+				High:   100,
+				Low:    100,
+				Close:  100,
+				Volume: 1,
+				Ticker: "SPFB.RTS",
+			},
+		},
+		{
+			tickers: []tickers.Tick{
+				{
+					Ticker:    "SPFB.RTS",
+					Timestamp: time.Now().Add(time.Second * 2),
+					Last:      100,
+					Vol:       1,
+				},
+				{
+					Ticker:    "SPFB.RTS",
+					Timestamp: time.Now().Add(time.Second * 3),
+					Last:      50,
+					Vol:       3,
+				},
+			},
+			expected: PlainOHLCV{
+				Open:   100,
+				High:   100,
+				Low:    50,
+				Close:  50,
+				Volume: 4,
+				Ticker: "SPFB.RTS",
+			},
+		},
+	}
+)
+
+func wait(amout int) {
+	time.Sleep(time.Duration(amout) * 10 * time.Millisecond)
+}
+
+func TestStat(t *testing.T) {
+	ts := &TickersSourceTest{
+		chLock: &sync.RWMutex{},
+		ch:     make([]chan tickers.Tick, 0, 2),
+	}
+
+	ctx, finish := context.WithCancel(context.Background())
+	go Start(ctx, listenAddr, ``, ts)
 
 	conn := getGrpcConn(t)
 	defer conn.Close()
 
-	biz := NewBizClient(conn)
-	adm := NewAdminClient(conn)
+	brokerid := exchange.BrokerID{
+		ID: 123,
+	}
+	exch := exchange.NewExchangeClient(conn)
+	statStream1, err := exch.Statistic(context.Background(), &brokerid)
+	if err != nil {
+		t.Fatalf("cant get stat stream: %v", err)
+	}
 
-	statStream1, err := adm.Statistics(getConsumerCtx("stat1"), &StatInterval{IntervalSeconds: 2})
-	wait(1)
-	statStream2, err := adm.Statistics(getConsumerCtx("stat2"), &StatInterval{IntervalSeconds: 3})
+	wait(3)
 
-	mu := &sync.Mutex{}
-	stat1 := &Stat{}
-	stat2 := &Stat{}
+	for j, v := range stattests {
+		t.Logf("executing stat test %v\n", j)
+		ohclv1 := PlainOHLCV{}
+		//reading results
+		//feed with data
+		go func() {
+			ts.Run(v.tickers)
+		}()
 
-	wg := &sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		for {
+		for i := 0; i < 1; i++ {
 			stat, err := statStream1.Recv()
-			if err != nil && err != io.EOF {
-				// fmt.Printf("unexpected error %v\n", err)
-				return
-			} else if err == io.EOF {
+			if err == io.EOF {
 				break
 			}
-			// log.Println("stat1", stat, err)
-			mu.Lock()
-			// это грязный хак
-			// protobuf добавляет к структуре свои поля, которвые не видны при приведении к строке и при reflect.DeepEqual
-			// поэтому берем не оригинал сообщения, а только нужные значения
-			stat1 = &Stat{
-				ByMethod:   stat.ByMethod,
-				ByConsumer: stat.ByConsumer,
+
+			ohclv1 = PlainOHLCV{
+				Open:   stat.Open,
+				High:   stat.High,
+				Low:    stat.Low,
+				Close:  stat.Close,
+				Volume: stat.Volume,
+				Ticker: stat.Ticker,
 			}
-			mu.Unlock()
 		}
-	}()
-	go func() {
-		for {
-			stat, err := statStream2.Recv()
-			if err != nil && err != io.EOF {
-				// fmt.Printf("unexpected error %v\n", err)
-				return
-			} else if err == io.EOF {
-				break
-			}
-			// log.Println("stat2", stat, err)
-			mu.Lock()
-			// это грязный хак
-			// protobuf добавляет к структуре свои поля, которвые не видны при приведении к строке и при reflect.DeepEqual
-			// поэтому берем не оригинал сообщения, а только нужные значения
-			stat2 = &Stat{
-				ByMethod:   stat.ByMethod,
-				ByConsumer: stat.ByConsumer,
-			}
-			mu.Unlock()
+
+		if !reflect.DeepEqual(ohclv1, v.expected) {
+			t.Fatalf("ohclv1 dont match\nhave %+v\nwant %+v", ohclv1, v.expected)
+		} else {
+			t.Logf("stat test %v ok!\n", j)
 		}
-	}()
 
-	wait(1)
-
-	biz.Check(getConsumerCtx("biz_user"), &Nothing{})
-	biz.Add(getConsumerCtx("biz_user"), &Nothing{})
-	biz.Test(getConsumerCtx("biz_admin"), &Nothing{})
-
-	wait(200) // 2 sec
-
-	expectedStat1 := &Stat{
-		ByMethod: map[string]uint64{
-			"/main.Biz/Check":        1,
-			"/main.Biz/Add":          1,
-			"/main.Biz/Test":         1,
-			"/main.Admin/Statistics": 1,
-		},
-		ByConsumer: map[string]uint64{
-			"biz_user":  2,
-			"biz_admin": 1,
-			"stat2":     1,
-		},
 	}
-
-	mu.Lock()
-	if !reflect.DeepEqual(stat1, expectedStat1) {
-		t.Fatalf("stat1-1 dont match\nhave %+v\nwant %+v", stat1, expectedStat1)
-	}
-	mu.Unlock()
-
-	biz.Add(getConsumerCtx("biz_admin"), &Nothing{})
-
-	wait(220) // 2+ sec
-
-	expectedStat1 = &Stat{
-		Timestamp: 0,
-		ByMethod: map[string]uint64{
-			"/main.Biz/Add": 1,
-		},
-		ByConsumer: map[string]uint64{
-			"biz_admin": 1,
-		},
-	}
-	expectedStat2 := &Stat{
-		Timestamp: 0,
-		ByMethod: map[string]uint64{
-			"/main.Biz/Check": 1,
-			"/main.Biz/Add":   2,
-			"/main.Biz/Test":  1,
-		},
-		ByConsumer: map[string]uint64{
-			"biz_user":  2,
-			"biz_admin": 2,
-		},
-	}
-
-	mu.Lock()
-	if !reflect.DeepEqual(stat1, expectedStat1) {
-		t.Fatalf("stat1-2 dont match\nhave %+v\nwant %+v", stat1, expectedStat1)
-	}
-	if !reflect.DeepEqual(stat2, expectedStat2) {
-		t.Fatalf("stat2 dont match\nhave %+v\nwant %+v", stat2, expectedStat2)
-	}
-	mu.Unlock()
 
 	finish()
 }
-*/

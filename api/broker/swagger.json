@@ -1,0 +1,41 @@
+{
+  "swagger": "2.0",
+  "paths": {
+    "/login": {
+      "post": {
+        "description": "Returns JWT token on succesful authorization",
+        "tags": [
+          "Performs"
+        ],
+        "summary": "Login endpoint",
+        "operationId": "login",
+        "responses": {
+          "200": {
+            "description": "json",
+            "$ref": "#/responses/Token"
+          },
+          "400": {
+            "description": "json",
+            "$ref": "#/responses/Message"
+          }
+        }
+      }
+    },
+    "/logout": {
+      "get": {
+        "description": "Deletes current user session",
+        "tags": [
+          "Performs"
+        ],
+        "summary": "Logout endpoint",
+        "operationId": "logout",
+        "responses": {
+          "200": {
+            "description": "response",
+            "$ref": "#/responses/empty"
+          }
+        }
+      }
+    }
+  }
+}

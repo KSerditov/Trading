@@ -39,15 +39,6 @@ func main() {
 		fmt.Println(err)
 	}
 
-	/*ch := tickers.GetFeedChannel()
-	for {
-		select {
-		case ticker := <-ch:
-			fmt.Printf("NEW TICKER: %v\n", ticker)
-		}
-
-	}*/
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

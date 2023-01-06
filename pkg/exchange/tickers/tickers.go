@@ -10,7 +10,6 @@ type Tick struct {
 }
 
 type TickersSource interface {
-	Init() error
 	GetFeedChannel() <-chan Tick
 	CloseFeed()
 }

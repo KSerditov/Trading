@@ -20,3 +20,12 @@ check-env:
 ifndef GOBIN
 	$(error GOBIN is undefined, set GOBIN so protoc can see installed plugins in PATH)
 endif
+
+start-docker:
+	docker compose -f ./deployments/docker-compose.yml up
+
+stop-docker:
+	docker compose -f ./deployments/docker-compose.yml down
+
+generate-swagger:
+	swagger generate spec -o ./api/broker/swagger.json
