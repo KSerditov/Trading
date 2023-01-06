@@ -14,3 +14,13 @@
 
 ### Клиент
 Встроенные в брокер web страницы на bootstrap, получающие данные от брокера
+
+![image](https://user-images.githubusercontent.com/3009597/211049871-6c831121-41f3-42dc-b4b2-118f65cb531c.png)
+![image](https://user-images.githubusercontent.com/3009597/211049933-96d9784b-3216-455f-a624-194af42eac5c.png)
+![image](https://user-images.githubusercontent.com/3009597/211050005-fc2dd493-4b1e-41f6-adf6-96e9da43741f.png)
+
+### Тестовый пользователь
+megaurich
+12345678
+
+## Известные проблемы/недоделки
