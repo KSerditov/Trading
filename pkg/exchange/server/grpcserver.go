@@ -232,11 +232,17 @@ func (e *ExchangeSrv) Results(brokerID *exchange.BrokerID, exchangeResultsServer
 		return err
 	}
 
+	ctx := exchangeResultsServer.Context()
+
 	for {
-		d := <-c
-		errsend := exchangeResultsServer.Send(d)
-		if errsend != nil {
-			fmt.Printf("Error sending Results: %v", errsend)
+		select {
+		case d := <-c:
+			errsend := exchangeResultsServer.Send(d)
+			if errsend != nil {
+				fmt.Printf("Error sending Results: %v", errsend)
+			}
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
