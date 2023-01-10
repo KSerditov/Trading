@@ -109,14 +109,12 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 
 	var opents, closets time.Time
 	ohlcvs := make(map[string]*exchange.OHLCV, 2)
-	ohlcvsLock := &sync.RWMutex{}
 
 	for {
 		select {
 		// new ticker from feed - collect data into ohlcv map per each ticker value
 		case v := <-feed:
 			//fmt.Printf("STATISTICS NEW TICKER FROM FEED %v\n", v)
-			ohlcvsLock.Lock()
 			_, ok := ohlcvs[v.Ticker]
 			if !ok { // add new ticker first time in interval
 				opents = v.Timestamp
@@ -134,7 +132,6 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 					Ticker:   v.Ticker,
 				}
 				ohlcvs[v.Ticker] = newOHLCV
-				ohlcvsLock.Unlock()
 				continue
 			}
 
@@ -160,24 +157,20 @@ func (e *ExchangeSrv) Statistic(brokerID *exchange.BrokerID, exchangeStatisticSe
 			}
 
 			//fmt.Printf("STATISTICS AGGREGATE %v\n", ohlcvs[v.Ticker])
-			ohlcvsLock.Unlock()
 
 		// broker notification interval elapsed - send collected data
 		case timetick := <-ticker.C:
 			//fmt.Printf("STATISTICS NEW TIME TICK\n")
-			ohlcvsLock.Lock()
 			for _, v := range ohlcvs {
 				v.Time = int32(timetick.Unix())
 				//fmt.Printf("STATISTICS SENDING %v\n", v)
 				errsend := exchangeStatisticServer.Send(v)
 
 				if errsend != nil {
-					ohlcvsLock.Unlock()
 					return errsend
 				}
 			}
 			ohlcvs = make(map[string]*exchange.OHLCV, 2)
-			ohlcvsLock.Unlock()
 
 		case <-ctx.Done():
 			return nil
