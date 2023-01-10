@@ -240,6 +240,8 @@ func (u *UserClientHandler) Login(w http.ResponseWriter, r *http.Request) {
 	token, err := u.UserAPI.Authorize(lf)
 	if err != nil {
 		u.Logger.Errorw("failed to read api login response")
+		u.Error(w, r, "authorization failed")
+		return
 	}
 
 	cookie := &http.Cookie{

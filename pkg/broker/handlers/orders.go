@@ -12,21 +12,18 @@ import (
 
 	"github.com/KSerditov/Trading/api/exchange"
 	"github.com/KSerditov/Trading/pkg/broker/custlog"
+	"github.com/KSerditov/Trading/pkg/broker/exchclient"
 	"github.com/KSerditov/Trading/pkg/broker/orders"
 	"github.com/KSerditov/Trading/pkg/broker/session"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type OrderHandlers struct {
 	SessMgr    *session.JWTSessionManager
 	OrdersRepo orders.OrdersRepository
+	ExchClient exchclient.OrderExchClient
 
-	ExchServerAddress string
-	BrokerID          int32
-	ClientID          int32
-	HistoryDepthMin   int32
+	ClientID        int32
+	HistoryDepthMin int32
 }
 
 func (o *OrderHandlers) CreateDeal(userid string, deal *orders.Deal) (*exchange.DealID, int, error) {
@@ -51,27 +48,7 @@ func (o *OrderHandlers) CreateDeal(userid string, deal *orders.Deal) (*exchange.
 		return nil, http.StatusBadRequest, errors.New("deal type can be buy or sell only")
 	}
 
-	grcpConn, err := grpc.Dial(
-		o.ExchServerAddress,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	defer grcpConn.Close()
-
-	c := exchange.NewExchangeClient(grcpConn)
-	ctx1 := context.Background()
-	exchdeal := &exchange.Deal{
-		BrokerID: o.BrokerID,
-		ClientID: o.ClientID,
-		Ticker:   deal.Ticker,
-		Volume:   deal.Volume,
-		Partial:  false,
-		Time:     int32(time.Now().Unix()),
-		Price:    float32(deal.Price),
-	}
-	dealid, err := c.Create(ctx1, exchdeal)
+	dealid, err := o.ExchClient.CreateDeal(deal.Ticker, deal.Volume, float32(deal.Price), o.ClientID)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -125,24 +102,8 @@ func (o *OrderHandlers) CancelDeal(userid string, dealid *orders.DealId) (int, b
 		return http.StatusBadRequest, false, errors.New("deal does not exist")
 	}
 
-	grcpConn, err := grpc.Dial(
-		o.ExchServerAddress,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return http.StatusInternalServerError, false, err
-	}
-	defer grcpConn.Close()
-
-	c := exchange.NewExchangeClient(grcpConn)
-	ctx1 := context.Background()
-	did := &exchange.DealID{
-		ID:       dealid.Id,
-		BrokerID: int64(o.BrokerID),
-	}
-
-	cancel, err := c.Cancel(ctx1, did)
-	if cancel.Success {
+	cancelled, err := o.ExchClient.CancelDeal(dealid.Id)
+	if cancelled {
 		errr := o.OrdersRepo.DeleteDealById(dealid.Id)
 		if errr != nil {
 			//log error, but request has been posted to exchange, so return OK

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/KSerditov/Trading/pkg/broker/custlog"
+	"github.com/KSerditov/Trading/pkg/broker/exchclient"
 	"github.com/KSerditov/Trading/pkg/broker/handlers"
 	"github.com/KSerditov/Trading/pkg/broker/middleware"
 	"github.com/KSerditov/Trading/pkg/broker/orders"
@@ -45,13 +46,21 @@ func (a *BrokerApp) Initialize(sessRepo *session.SessionRepository, userRepo *us
 		UserRepo: *a.UserRepo,
 	}
 
-	OrderHandlers := &handlers.OrderHandlers{
-		SessMgr:           sm,
-		OrdersRepo:        *a.OrdersRepo,
+	ExchangeClient := &exchclient.OrderExchClientGRPC{
 		ExchServerAddress: "127.0.0.1:8082",
 		BrokerID:          123,
-		ClientID:          11,
-		HistoryDepthMin:   15,
+	}
+	errexch := ExchangeClient.Init()
+	if errexch != nil {
+		a.Logger.Zap.Fatal("grpc client initialization failure")
+	}
+
+	OrderHandlers := &handlers.OrderHandlers{
+		SessMgr:         sm,
+		OrdersRepo:      *a.OrdersRepo,
+		ExchClient:      ExchangeClient,
+		ClientID:        11,
+		HistoryDepthMin: 15,
 	}
 
 	UserHandlers := &handlers.UserHandlers{
