@@ -7,7 +7,8 @@ DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `id` BINARY(16) PRIMARY KEY,
   `username` VARCHAR(32) NOT NULL,
-  `hash` CHAR(32) NOT NULL
+  `hash` CHAR(32) NOT NULL,
+  INDEX (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 DROP TABLE IF EXISTS `sessions`;
