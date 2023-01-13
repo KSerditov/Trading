@@ -2,8 +2,11 @@ package middleware
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"strings"
 
@@ -37,33 +40,54 @@ func (a *AuthHandler) Auth(next http.Handler) http.Handler {
 			return
 		}
 
+		fmt.Printf("REQ H: %v\n", r.Header)
+		fmt.Printf("REQ B: %v\n", r.Body)
+
 		token := ""
+		var claims *session.JWTClaims
 		// get jwt token from auth header
 		auth := r.Header.Get("Authorization")
-		if auth != "" {
-			splitToken := strings.Split(auth, "Bearer")
+		if strings.HasPrefix(auth, "Bearer") || strings.HasPrefix(auth, "Basic") {
+			splitToken := strings.Split(auth, " ")
 			if len(splitToken) < 2 {
 				a.jsonMsg(w, r, "cant retrieve token", http.StatusUnauthorized)
 				return
 			}
 			token = strings.TrimSpace(splitToken[1])
-		} else { // try to get from cookie
+		} else {
 			sessionCookie, err := r.Cookie("session")
 			if err != http.ErrNoCookie {
 				token = sessionCookie.Value
+			} else {
+				a.jsonMsg(w, r, "no token provided", http.StatusUnauthorized)
+				return
 			}
 		}
 
-		if token == "" {
-			a.jsonMsg(w, r, "no token provided", http.StatusUnauthorized)
-			return
-		}
-
-		// parse token
-		claims, err := a.SessMgr.GetJWTClaimsFromToken(token)
-		if err != nil {
-			a.jsonMsg(w, r, err.Error(), http.StatusUnauthorized)
-			return
+		if !strings.HasPrefix(auth, "Basic") {
+			cl, err := a.SessMgr.GetJWTClaimsFromToken(token)
+			if err != nil {
+				a.jsonMsg(w, r, err.Error(), http.StatusUnauthorized)
+				return
+			}
+			claims = cl
+		} else {
+			//workaround to disable authentication for api but still have userid in context
+			//need to refactor so that session id is consistent
+			usernameDec, _ := base64.URLEncoding.DecodeString(token)
+			username := string(usernameDec)
+			u, err := a.UserRepo.GetUser(username)
+			if err != nil {
+				a.jsonMsg(w, r, err.Error(), http.StatusUnauthorized)
+				return
+			}
+			claims = &session.JWTClaims{
+				Sid: &session.Session{
+					ID:     fmt.Sprintf("%v_%v", u.ID, time.Now().Format(time.RFC3339Nano)),
+					UserID: u.ID,
+				},
+				User: user.User{},
+			}
 		}
 
 		ctx := r.Context()
