@@ -19,6 +19,9 @@
 ![image](https://user-images.githubusercontent.com/3009597/211049933-96d9784b-3216-455f-a624-194af42eac5c.png)
 ![image](https://user-images.githubusercontent.com/3009597/211050005-fc2dd493-4b1e-41f6-adf6-96e9da43741f.png)
 
+### Телеграм бот с Oauth авторизацией через Vk
+![image](https://user-images.githubusercontent.com/3009597/212405672-27e77649-dc6d-4482-bc56-316cdca6df35.png)
+
 ### Тестовый пользователь
 megaurich
 12345678
@@ -45,6 +48,9 @@ megaurich
 8. Придумать способ получать пропущенные данные после обрыва (нужна поддержка на стороне биржи)
 9. Сделать докер образ
 
+### Клиент
+1. Логирование
+
 ### Общее
 1. Починить линтер в гитхабе
 2. Добавить мониторинг
@@ -53,4 +59,6 @@ megaurich
 1. > make start-docker
 2. > go run ./cmd/exchange/main.go
 3. > go run ./cmd/broker/main.go
-4. http://localhost:8080/
+4. > go run ./cmd/tgclient/main.go
+5. http://localhost:8080/ OR https://t.me/GoLangCourse2023Bot
+
