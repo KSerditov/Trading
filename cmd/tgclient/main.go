@@ -1,7 +1,10 @@
 package main
 
 import (
+	"sync"
+
 	"github.com/KSerditov/Trading/pkg/tgclient/bot"
+	"github.com/KSerditov/Trading/pkg/tgclient/botuser"
 	"github.com/KSerditov/Trading/pkg/tgclient/brokerclient"
 	"github.com/KSerditov/Trading/pkg/tgclient/oauth"
 	"github.com/KSerditov/Trading/pkg/tgclient/router"
@@ -38,11 +41,17 @@ func main() {
 	}
 	r.ListenAndServe()
 
+	tguserRepo := &botuser.TgUserRepositoryInMem{
+		UsersLock: &sync.RWMutex{},
+		Users:     make(map[int64]*botuser.TgUser, 100),
+	}
+
 	b := &bot.TgBot{
-		BotToken:     BotToken,
-		Debug:        true,
-		AuthProvider: a,
-		BrokerClient: br,
+		BotToken:         BotToken,
+		Debug:            true,
+		AuthProvider:     a,
+		BrokerClient:     br,
+		TgUserRepository: tguserRepo,
 	}
 	b.ListenAndServe()
 

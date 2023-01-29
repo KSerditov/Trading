@@ -6,46 +6,27 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/KSerditov/Trading/pkg/broker/orders"
+	"github.com/KSerditov/Trading/pkg/tgclient/botuser"
 	"github.com/KSerditov/Trading/pkg/tgclient/brokerclient"
 	"github.com/KSerditov/Trading/pkg/tgclient/oauth"
-	"golang.org/x/oauth2"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-type TgUser struct {
-	Fquid         string //fully qualified username - provider + id from oauth service
-	Userid        string
-	Email         string
-	Provider      string
-	ProviderToken *oauth2.Token
-}
-
-func (g *TgUser) SetFQUID() string {
-	g.Fquid = fmt.Sprintf("%v:%v", g.Provider, g.Userid)
-	return g.Fquid
-}
-
 type TgBot struct {
-	BotToken     string
-	Debug        bool
-	AuthProvider oauth.OauthProvider
-	BrokerClient brokerclient.BrokerClient
+	BotToken         string
+	Debug            bool
+	AuthProvider     oauth.OauthProvider
+	BrokerClient     brokerclient.BrokerClient
+	TgUserRepository botuser.TgUserRepository
 
 	bot *tgbotapi.BotAPI
-
-	usersLock *sync.RWMutex
-	users     map[int64]*TgUser
 }
 
 func (t *TgBot) ListenAndServe() {
-	t.usersLock = &sync.RWMutex{}
-	t.users = make(map[int64]*TgUser, 100)
-
 	bot, err := tgbotapi.NewBotAPI(t.BotToken)
 	if err != nil {
 		log.Panic(err)
@@ -107,18 +88,17 @@ func (t *TgBot) Start(upd tgbotapi.Update) {
 	}
 
 	fmt.Printf("TOKEN:\n%v\n", token.AccessToken)
-
-	t.usersLock.Lock()
-	user := &TgUser{
-		Userid:        fmt.Sprint(int(token.Extra("user_id").(float64))),
-		Email:         token.Extra("email").(string),
-		Provider:      t.AuthProvider.GetProviderName(),
-		ProviderToken: token,
+	_, adderr := t.TgUserRepository.AddUser(
+		upd.Message.Chat.ID,
+		token,
+		t.AuthProvider.GetProviderName(),
+	)
+	if adderr != nil {
+		text := fmt.Sprintf("Authentication failed: %v", adderr.Error())
+		msg = tgbotapi.NewMessage(upd.Message.Chat.ID, text)
+		t.bot.Send(msg)
+		return
 	}
-	user.SetFQUID()
-	t.users[upd.Message.Chat.ID] = user
-
-	t.usersLock.Unlock()
 
 	text := fmt.Sprintf("Hi, userid: %v email: %v", token.Extra("user_id"), token.Extra("email"))
 	msg = tgbotapi.NewMessage(upd.Message.Chat.ID, text)
@@ -128,14 +108,11 @@ func (t *TgBot) Start(upd tgbotapi.Update) {
 func (t *TgBot) History(upd tgbotapi.Update) {
 	ticker := strings.TrimSpace(upd.Message.CommandArguments())
 
-	t.usersLock.RLock()
-	u, ok := t.users[upd.Message.Chat.ID]
-	if !ok {
-		t.usersLock.Unlock()
+	u, err := t.TgUserRepository.GetUser(upd.Message.Chat.ID)
+	if err != nil {
 		t.sendAuthMsg(upd.Message.Chat.ID)
 		return
 	}
-	t.usersLock.RUnlock()
 
 	history, err := t.BrokerClient.History(ticker, u.Fquid)
 	if err != nil {
@@ -160,14 +137,11 @@ func (t *TgBot) History(upd tgbotapi.Update) {
 }
 
 func (t *TgBot) Positions(upd tgbotapi.Update) {
-	t.usersLock.RLock()
-	u, ok := t.users[upd.Message.Chat.ID]
-	if !ok {
-		t.usersLock.RUnlock()
+	u, err := t.TgUserRepository.GetUser(upd.Message.Chat.ID)
+	if err != nil {
 		t.sendAuthMsg(upd.Message.Chat.ID)
 		return
 	}
-	t.usersLock.RUnlock()
 
 	positions, err := t.BrokerClient.Positions(u.Fquid)
 	if err != nil {
@@ -191,16 +165,13 @@ func (t *TgBot) Positions(upd tgbotapi.Update) {
 }
 
 func (t *TgBot) Register(upd tgbotapi.Update) {
-	t.usersLock.RLock()
-	u, ok := t.users[upd.Message.Chat.ID]
-	if !ok {
-		t.usersLock.RUnlock()
+	u, err := t.TgUserRepository.GetUser(upd.Message.Chat.ID)
+	if err != nil {
 		t.sendAuthMsg(upd.Message.Chat.ID)
 		return
 	}
-	t.usersLock.RUnlock()
 
-	err := t.BrokerClient.Register(u.Fquid)
+	err = t.BrokerClient.Register(u.Fquid)
 	if err != nil {
 		t.sendError(upd.Message.Chat.ID, err)
 		return
@@ -245,14 +216,11 @@ func (t *TgBot) AddDeal(upd tgbotapi.Update, is_buy bool) {
 		d.Type = "SELL"
 	}
 
-	t.usersLock.RLock()
-	u, ok := t.users[upd.Message.Chat.ID]
-	if !ok {
-		t.usersLock.RUnlock()
+	u, err := t.TgUserRepository.GetUser(upd.Message.Chat.ID)
+	if err != nil {
 		t.sendAuthMsg(upd.Message.Chat.ID)
 		return
 	}
-	t.usersLock.RUnlock()
 
 	deal, err := t.BrokerClient.Deal(d, u.Fquid)
 	if err != nil {
@@ -272,14 +240,11 @@ func (t *TgBot) CancelDeal(upd tgbotapi.Update) {
 		return
 	}
 
-	t.usersLock.RLock()
-	u, ok := t.users[upd.Message.Chat.ID]
-	if !ok {
-		t.usersLock.RUnlock()
+	u, err := t.TgUserRepository.GetUser(upd.Message.Chat.ID)
+	if err != nil {
 		t.sendAuthMsg(upd.Message.Chat.ID)
 		return
 	}
-	t.usersLock.RUnlock()
 
 	cancelled, err := t.BrokerClient.Cancel(dealid, u.Fquid)
 	if err != nil {
