@@ -21,26 +21,42 @@ type LoginForm struct {
 	Password string `json:"password"`
 }
 
-func (b *BrokerClientHttp) setAuth(userid string, req *http.Request) {
+func (b *BrokerClientHttp) MakeRequest(
+	userid string,
+	url string,
+	params map[string]string,
+	bodyObj interface{},
+	respObj interface{},
+) error {
+	url = fmt.Sprintf("%v%v", b.BrokerBaseURL, url)
+
+	var req *http.Request
+	var err error
+
+	if bodyObj == nil {
+		req, err = http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		q := req.URL.Query()
+		if params != nil {
+			for k, v := range params {
+				q.Add(k, v)
+			}
+			req.URL.RawQuery = q.Encode()
+		}
+	} else {
+		post, _ := json.Marshal(bodyObj)
+		req, err = http.NewRequest(http.MethodPost, url, bytes.NewBuffer(post))
+		if err != nil {
+			return err
+		}
+	}
+
 	creds := fmt.Sprintf("%v", userid)
 	encreds := base64.StdEncoding.EncodeToString([]byte(creds))
 	req.Header.Add("Authorization", fmt.Sprintf("Basic %v", encreds))
 	req.Header.Add("Content-Type", "application/json")
-}
-
-func (b *BrokerClientHttp) Register(userid string) error {
-	url := fmt.Sprintf("%v/api/v1/register", b.BrokerBaseURL)
-
-	lf := &LoginForm{
-		Username: userid,
-		Password: "", // do not use for oauth
-	}
-	post, _ := json.Marshal(lf)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(post))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -49,10 +65,42 @@ func (b *BrokerClientHttp) Register(userid string) error {
 	}
 	defer resp.Body.Close()
 
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
 	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
+
+	msg := make(map[string]string, 1)
+	err = json.Unmarshal(body, &msg)
+	if err == nil {
+		message, ok := msg["message"]
+		if ok {
+			return errors.New(message)
+		}
+	}
+	fmt.Printf("RESPONSE: %v", string(body))
+	err = json.Unmarshal(body, respObj)
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func (b *BrokerClientHttp) Register(userid string) error {
+	lf := &LoginForm{
+		Username: userid,
+		Password: "", // do not use for oauth
+	}
+	resp := make(map[string]interface{}, 1)
+
+	err := b.MakeRequest(
+		userid,
+		"/api/v1/register",
+		nil,
+		lf,
+		resp,
+	)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -62,109 +110,68 @@ func (b *BrokerClientHttp) History(ticker string, userid string) (*orders.Histor
 		return nil, errors.New("please provide ticker name")
 	}
 
-	url := fmt.Sprintf("%v/api/v1/history", b.BrokerBaseURL)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	b.setAuth(userid, req)
-
-	q := req.URL.Query()
-	q.Add("ticker", ticker)
-	req.URL.RawQuery = q.Encode()
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
 	history := &orders.HistoryResponse{}
-	err1 := json.Unmarshal(body, history)
-	if err1 != nil {
-		return nil, err1
+	err := b.MakeRequest(
+		userid,
+		"/api/v1/history",
+		map[string]string{"ticker": ticker},
+		nil,
+		history,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	return history, nil
 }
 
 func (b *BrokerClientHttp) Positions(userid string) (*orders.StatusResponse, error) {
-	url := fmt.Sprintf("%v/api/v1/status", b.BrokerBaseURL)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	b.setAuth(userid, req)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
 	status := &orders.StatusResponse{}
-	err1 := json.Unmarshal(body, status)
-	if err1 != nil {
-		return nil, err1
+
+	err := b.MakeRequest(
+		userid,
+		"/api/v1/status",
+		nil,
+		nil,
+		status,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	return status, nil
 }
 
 func (b *BrokerClientHttp) Deal(deal *orders.Deal, userid string) (*orders.DealIdResponse, error) {
-	url := fmt.Sprintf("%v/api/v1/deal", b.BrokerBaseURL)
-	post, _ := json.Marshal(deal)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(post))
-	if err != nil {
-		return nil, err
-	}
-	b.setAuth(userid, req)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
 	dealid := &orders.DealIdResponse{}
-	err1 := json.Unmarshal(body, dealid)
-	if err1 != nil {
-		return nil, err1
+	err := b.MakeRequest(
+		userid,
+		"/api/v1/deal",
+		nil,
+		deal,
+		dealid,
+	)
+	if err != nil {
+		return nil, err
 	}
-
+	fmt.Printf("DEALRESPONSE: %v", dealid)
 	return dealid, nil
 }
 
 func (b *BrokerClientHttp) Cancel(dealid int64, userid string) (bool, error) {
-	url := fmt.Sprintf("%v/api/v1/cancel", b.BrokerBaseURL)
 	d := &orders.DealId{
 		Id: dealid,
 	}
-	post, _ := json.Marshal(d)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(post))
-	if err != nil {
-		return false, err
-	}
-	b.setAuth(userid, req)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
 	cancel := &orders.CancelResponse{}
-	err1 := json.Unmarshal(body, cancel)
-	if err1 != nil {
-		return false, err1
+	err := b.MakeRequest(
+		userid,
+		"/api/v1/deal",
+		nil,
+		d,
+		cancel,
+	)
+	if err != nil {
+		return false, err
 	}
 	if cancel.Body.Status != "Success" {
 		return false, nil

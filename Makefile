@@ -24,6 +24,15 @@ endif
 start-docker:
 	docker compose -f ./deployments/docker-compose.yml up
 
+start-exchange:
+	go run ./cmd/exchange/main.go
+
+start-broker:
+	go run ./cmd/broker/main.go
+
+start-client:
+	go run ./cmd/tgclient/main.go
+
 stop-docker:
 	docker compose -f ./deployments/docker-compose.yml down
 
