@@ -1,0 +1,66 @@
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Create Deal</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+      </head>
+<body>
+    <nav class="navbar navbar-expand-lg bg-body-tertiary">
+        <div class="container-sm">
+          <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+            <div class="navbar-nav">
+              <a class="nav-link active" aria-current="page" href="/deal">Create deal</a>
+              <a class="nav-link" href="/positions">My positions</a>
+              <a class="nav-link" href="/history">Price history</a>
+            </div>
+          </div>
+          <div class="ml-auto p-2">
+            <a class="nav-link" href="/logout">Logout</a>
+        </div>
+        </div>
+      </nav>
+<div class="container-sm">
+<div>
+
+    <form class="row g-3 needs-validation" novalidate action="/deal" method="post">
+        <div class="col-md-2">
+          <label for="validationCustom01" class="form-label">Volume</label>
+          <input type="text" class="form-control" name="volume" id="volume" value="0" required>
+        </div>
+        <div class="col-md-2">
+          <label for="validationCustom02" class="form-label">Price</label>
+          <input type="text" class="form-control" name="price" id="price" value="0" required>
+        </div>
+        <div class="col-md-2">
+          <label for="validationCustom04" class="form-label">Ticker</label>
+          <select class="form-select" name="ticker" id="ticker" required>
+            <option selected disabled value="">Choose...</option>
+            <option>SPFB.RTS</option>
+            <option>SPFB.Si</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+            <label for="validationCustom04" class="form-label">Type</label>
+            <select class="form-select" name="type" id="type" required>
+              <option selected disabled value="">Choose...</option>
+              <option>BUY</option>
+              <option>SELL</option>
+            </select>
+          </div>
+        <div class="col-12">
+          <button class="btn btn-primary" type="submit">Post Deal</button>
+        </div>
+      </form>
+
+</div>
+</div>
+<div class="container-sm">
+    {{range .PostResult}}
+    <h1 class="display-5">{{.}}</h1>
+    {{else}}
+    {{end}}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
+</body>
+</html>
